@@ -25,7 +25,7 @@ A self-hosted Minecraft server management dashboard. Run and manage multiple Min
 cp .env.example .env
 ```
 
-Set `HOST_DATA_DIR` to the absolute path where you want server data stored, and change `DASHBOARD_SECRET` to a random string.
+Set `HOST_DATA_DIR` to the absolute path where you want server data stored. Optionally set `DASHBOARD_USER` and `DASHBOARD_PASSWORD` to enable login.
 
 2. Start the dashboard:
 
@@ -61,6 +61,29 @@ npm run dev
 ```
 
 The frontend dev server proxies API requests to the backend at `http://localhost:3001`.
+
+## Tech stack
+
+**Backend**
+- [Bun](https://bun.sh) — runtime and package manager
+- [Express](https://expressjs.com) — HTTP server
+- [Dockerode](https://github.com/apocas/dockerode) — Docker API client
+- [ws](https://github.com/websockets/ws) — WebSocket server for real-time console
+- [better-sqlite3](https://github.com/WiseLibs/better-sqlite3) — embedded database for server configs and backups
+- [archiver](https://github.com/archiverjs/node-archiver) — backup zip creation
+- [yauzl](https://github.com/thejoshwolfe/yauzl) — zip extraction for Prism imports
+
+**Frontend**
+- [React](https://react.dev) — UI framework
+- [Vite](https://vitejs.dev) — dev server and build tool
+- [Tailwind CSS](https://tailwindcss.com) — styling
+- [Zustand](https://zustand-demo.pmnd.rs) — client state management
+- [React Router](https://reactrouter.com) — client-side routing
+- [Lucide](https://lucide.dev) — icons
+
+**Infrastructure**
+- [Docker](https://www.docker.com) — containerisation
+- [itzg/minecraft-server](https://github.com/itzg/docker-minecraft-server) — Minecraft server image
 
 ## How it works
 
