@@ -67,7 +67,3 @@ The frontend dev server proxies API requests to the backend at `http://localhost
 Spawnpoint runs as a Docker container with access to the Docker socket. When you create or start a server, it spins up a separate `itzg/minecraft-server` container with the appropriate configuration, bind-mounting a subdirectory of `HOST_DATA_DIR` as the server's data volume.
 
 The dashboard communicates with running servers over RCON (commands) and Docker logs (console output).
-
-## License
-
-MIT
