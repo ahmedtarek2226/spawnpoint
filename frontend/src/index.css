@@ -1,0 +1,46 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  body {
+    @apply bg-mc-dark text-gray-100 font-mono;
+  }
+  ::-webkit-scrollbar { width: 6px; height: 6px; }
+  ::-webkit-scrollbar-track { @apply bg-mc-dark; }
+  ::-webkit-scrollbar-thumb { @apply bg-mc-border rounded; }
+}
+
+@layer utilities {
+  .scrollbar-none {
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+  }
+  .scrollbar-none::-webkit-scrollbar {
+    display: none;
+  }
+}
+
+@layer components {
+  .btn {
+    @apply inline-flex items-center gap-2 px-3 py-1.5 rounded text-sm font-medium transition-colors disabled:opacity-40 disabled:cursor-not-allowed;
+  }
+  .btn-primary {
+    @apply btn bg-mc-green hover:bg-green-600 text-white;
+  }
+  .btn-danger {
+    @apply btn bg-red-700 hover:bg-red-600 text-white;
+  }
+  .btn-ghost {
+    @apply btn bg-transparent hover:bg-mc-panel text-gray-300 hover:text-white border border-mc-border;
+  }
+  .card {
+    @apply bg-mc-panel border border-mc-border rounded-lg;
+  }
+  .input {
+    @apply bg-mc-dark border border-mc-border rounded px-3 py-1.5 text-sm text-gray-100 focus:outline-none focus:border-mc-green transition-colors w-full;
+  }
+  .label {
+    @apply block text-xs text-mc-muted mb-1 uppercase tracking-wide;
+  }
+}

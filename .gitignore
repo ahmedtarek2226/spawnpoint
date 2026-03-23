@@ -1,0 +1,40 @@
+# Dependencies
+node_modules/
+
+# Build output
+dist/
+frontend/dist/
+backend/dist/
+
+# Database
+*.db
+*.db-shm
+*.db-wal
+
+# Runtime data — server files, backups, downloaded jars
+data/
+servers/
+backups/
+jars/
+
+# Logs
+*.log
+logs/
+
+# Environment
+.env
+.env.local
+.env.*.local
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Editor
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Docker overrides
+docker-compose.override.yml

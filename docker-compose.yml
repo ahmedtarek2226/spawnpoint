@@ -1,0 +1,20 @@
+services:
+  spawnpoint:
+    build: .
+    container_name: spawnpoint
+    restart: unless-stopped
+    ports:
+      - "${DASHBOARD_PORT:-3000}:3000"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      # Data volume — can be a host path or named volume.
+      # The backend auto-detects the host-side path from /proc/self/mountinfo,
+      # so no extra env var is needed for most setups.
+      - ${HOST_DATA_DIR:-./data}:/app/data
+    environment:
+      - DATA_DIR=/app/data
+      - PORT=3000
+      - DASHBOARD_USER=${DASHBOARD_USER:-}
+      - DASHBOARD_PASSWORD=${DASHBOARD_PASSWORD:-}
+      # Optional: override host path detection (only needed on Docker Desktop/macOS/Windows)
+      # - HOST_DATA_DIR=/absolute/host/path/to/data

@@ -1,0 +1,20 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" width="32" height="32">
+  <!-- Background -->
+  <rect width="32" height="32" rx="6" fill="#1a1a1a"/>
+
+  <!-- Crosshair arms -->
+  <!-- Top arm -->
+  <rect x="14" y="3" width="4" height="7" rx="1" fill="#5da832"/>
+  <!-- Bottom arm -->
+  <rect x="14" y="22" width="4" height="7" rx="1" fill="#5da832"/>
+  <!-- Left arm -->
+  <rect x="3" y="14" width="7" height="4" rx="1" fill="#5da832"/>
+  <!-- Right arm -->
+  <rect x="22" y="14" width="7" height="4" rx="1" fill="#5da832"/>
+
+  <!-- Center diamond (rotated square) -->
+  <rect x="12" y="12" width="8" height="8" rx="1" fill="#5da832" transform="rotate(45 16 16)"/>
+
+  <!-- Center dot -->
+  <rect x="14.5" y="14.5" width="3" height="3" rx="0.5" fill="#1a1a1a"/>
+</svg>
