@@ -4,6 +4,20 @@
 
 A self-hosted Minecraft server management dashboard. Run and manage multiple Minecraft servers from a single web UI, with real-time console, file management, backups, and player tracking — all containerized with Docker.
 
+## Screenshots
+
+<!-- Dashboard overview showing server cards with status, RAM, CPU, and player counts -->
+![Dashboard](screenshots/dashboard.png)
+
+<!-- Server console with real-time log output and command input -->
+![Console](screenshots/console.png)
+
+<!-- File manager showing directory tree and file editor -->
+![File Manager](screenshots/files.png)
+
+<!-- New server creation form with type and version selection -->
+![New Server](screenshots/new-server.png)
+
 ## Features
 
 - Start, stop, and monitor multiple Minecraft servers
