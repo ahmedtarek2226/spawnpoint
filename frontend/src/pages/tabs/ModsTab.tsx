@@ -74,7 +74,7 @@ export default function ModsTab({ serverId }: { serverId: string }) {
         </div>
       ) : (
         <div className="card overflow-hidden">
-          <div className="overflow-y-auto max-h-[60vh]">
+          <div className="overflow-y-auto" style={{ maxHeight: 'calc(100vh - 280px)' }}>
           <table className="w-full text-sm">
             <thead className="text-xs text-mc-muted border-b border-mc-border bg-mc-panel/60">
               <tr>
