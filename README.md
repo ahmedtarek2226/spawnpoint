@@ -43,6 +43,7 @@ docker compose up -d
 | `HOST_DATA_DIR` | `./data` | Absolute path on the host for server data storage |
 | `DASHBOARD_USER` | — | Username for dashboard access (unset = no auth) |
 | `DASHBOARD_PASSWORD` | — | Password for dashboard access (unset = no auth) |
+| `CORS_ORIGIN` | — | Allowed CORS origin(s), comma-separated, or `*`. Unset = same-origin only |
 
 ## Development
 

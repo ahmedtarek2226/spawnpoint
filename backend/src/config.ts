@@ -66,3 +66,7 @@ export const HOST_DATA_DIR = resolveHostDataDir();
 
 export const DASHBOARD_USER = process.env.DASHBOARD_USER ?? '';
 export const DASHBOARD_PASSWORD = process.env.DASHBOARD_PASSWORD ?? '';
+
+// CORS_ORIGIN: comma-separated list of allowed origins, or * for all.
+// If unset, CORS is disabled (same-origin only — recommended for production).
+export const CORS_ORIGIN = process.env.CORS_ORIGIN ?? '';

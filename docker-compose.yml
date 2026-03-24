@@ -16,5 +16,6 @@ services:
       - PORT=3000
       - DASHBOARD_USER=${DASHBOARD_USER:-}
       - DASHBOARD_PASSWORD=${DASHBOARD_PASSWORD:-}
+      - CORS_ORIGIN=${CORS_ORIGIN:-}
       # Optional: override host path detection (only needed on Docker Desktop/macOS/Windows)
       # - HOST_DATA_DIR=/absolute/host/path/to/data
