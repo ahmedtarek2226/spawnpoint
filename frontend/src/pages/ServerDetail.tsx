@@ -31,6 +31,7 @@ export default function ServerDetail() {
   const server = servers.find((s) => s.id === id);
   const [actionLoading, setActionLoading] = useState<string | null>(null);
   const [error, setError] = useState('');
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
 
   useEffect(() => {
     if (!server && id) {
@@ -57,7 +58,7 @@ export default function ServerDetail() {
   }
 
   async function deleteServer() {
-    if (!confirm(`Delete "${server!.name}"? This cannot be undone.`)) return;
+    setShowDeleteModal(false);
     setActionLoading('delete');
     try {
       await api.delete(`/servers/${id}?wipe=true`);
@@ -113,7 +114,7 @@ export default function ServerDetail() {
                 <Zap size={14} /> Kill
               </button>
             )}
-            <button className="btn-danger text-sm px-2" onClick={deleteServer} disabled={!!actionLoading}>
+            <button className="btn-danger text-sm px-2" onClick={() => setShowDeleteModal(true)} disabled={!!actionLoading}>
               <Trash2 size={14} />
             </button>
           </div>
@@ -171,6 +172,26 @@ export default function ServerDetail() {
           <Route path="settings" element={<SettingsTab server={server} />} />
         </Routes>
       </div>
+
+      {showDeleteModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60">
+          <div className="bg-mc-panel border border-mc-border rounded-lg shadow-xl w-full max-w-sm mx-4 p-5 space-y-4">
+            <div className="text-sm font-medium text-gray-200">Delete server</div>
+            <p className="text-xs text-mc-muted">
+              Are you sure you want to delete <span className="text-gray-300 font-medium">{server.name}</span>?
+              All server files, worlds, and configuration will be permanently removed.
+            </p>
+            <div className="flex gap-2 justify-end pt-1">
+              <button className="btn-ghost text-xs" onClick={() => setShowDeleteModal(false)}>
+                Cancel
+              </button>
+              <button className="btn-danger text-xs" onClick={deleteServer}>
+                Delete server
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
