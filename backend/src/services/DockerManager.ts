@@ -6,6 +6,8 @@ import { ServerConfig, ServerRuntime, ServerMetrics, ServerStatus, WsOutbound } 
 import { MC_IMAGE, RCON_PORT_INSIDE_CONTAINER, CONSOLE_BUFFER_SIZE, SERVERS_DIR } from '../config';
 import { getHostDataDir } from './hostDataDir';
 import { analyzeCrash } from './CrashAnalyzer';
+import { getServer } from '../models/Server';
+import { startScheduler, stopScheduler, onPlayerJoin } from './MessageScheduler';
 
 const docker = new Dockerode({ socketPath: '/var/run/docker.sock' });
 
@@ -49,7 +51,11 @@ function pushLine(serverId: string, line: string): void {
   broadcast(serverId, { type: 'console_line', serverId, line, timestamp: Date.now() });
 
   // Detect status from console output
-  if (/Done \([\d.]+s\)! For help/.test(line)) setStatus(serverId, 'running');
+  if (/Done \([\d.]+s\)! For help/.test(line)) {
+    setStatus(serverId, 'running');
+    const config = getServer(serverId);
+    if (config) startScheduler(config);
+  }
   if (/Stopping the server/.test(line)) setStatus(serverId, 'stopping');
 
   // Parse TPS from Paper/Spigot `/tps` response
@@ -67,6 +73,8 @@ function pushLine(serverId: string, line: string): void {
       const name = joinMatch[1];
       if (!rt.playersOnline.includes(name)) rt.playersOnline.push(name);
       rt.metrics.playersOnline = rt.playersOnline.length;
+      const config = getServer(serverId);
+      if (config) onPlayerJoin(config, name);
     }
     const leaveMatch = line.match(/(\w{3,16})\s+left the game/);
     if (leaveMatch) {
@@ -117,6 +125,7 @@ async function attachLogs(serverId: string, container: Dockerode.Container): Pro
 
   stream.on('end', () => {
     logStreams.delete(serverId);
+    stopScheduler(serverId);
     const rt = getRuntime(serverId);
     if (rt.status !== 'stopping' && rt.status !== 'stopped') {
       const serverDir = path.join(SERVERS_DIR, serverId);
@@ -351,6 +360,7 @@ export async function killServer(serverId: string): Promise<void> {
     await container.kill();
   } catch { /* ignore */ }
   stopMetrics(serverId);
+  stopScheduler(serverId);
   setStatus(serverId, 'stopped');
 }
 

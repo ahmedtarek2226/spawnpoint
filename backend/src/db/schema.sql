@@ -23,3 +23,15 @@ CREATE TABLE IF NOT EXISTS backups (
 );
 
 CREATE INDEX IF NOT EXISTS idx_backups_server_id ON backups(server_id);
+
+CREATE TABLE IF NOT EXISTS server_messages (
+  id               TEXT PRIMARY KEY,
+  server_id        TEXT NOT NULL REFERENCES servers(id) ON DELETE CASCADE,
+  type             TEXT NOT NULL DEFAULT 'join',
+  content          TEXT NOT NULL,
+  interval_minutes INTEGER,
+  enabled          INTEGER NOT NULL DEFAULT 1,
+  created_at       TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE INDEX IF NOT EXISTS idx_server_messages_server_id ON server_messages(server_id);
