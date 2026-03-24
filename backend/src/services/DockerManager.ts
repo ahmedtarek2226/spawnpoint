@@ -366,25 +366,32 @@ export async function sendCommand(config: ServerConfig, command: string): Promis
     Tty: true, // plain stream — no 8-byte mux headers
   });
 
-  const raw = await new Promise<string>((resolve, reject) => {
-    exec.start({ hijack: true, Tty: true }, (err: Error | null, stream: NodeJS.ReadableStream) => {
-      // Dockerode may surface HTTP 101 (stream upgrade) as an error but still
-      // provide a valid stream. If stream exists, use it.
-      if (err && !stream) return reject(err);
-      if (!stream) return resolve('');
-
-      let buf = '';
-      stream.on('data', (chunk: Buffer) => { buf += chunk.toString('utf8'); });
-      // hijacked streams emit 'close', not 'end'
-      stream.on('end', () => resolve(buf.trim()));
-      (stream as NodeJS.ReadableStream & { on(e: 'close', l: () => void): void })
-        .on('close', () => resolve(buf.trim()));
-      stream.on('error', reject);
+  // Dockerode bundles the stream payload inside the error message for exec
+  // (HTTP 101 / stream upgrade). Collect whichever path provides the data.
+  let raw = '';
+  try {
+    raw = await new Promise<string>((resolve, reject) => {
+      exec.start({ hijack: true, Tty: true }, (err: Error | null, stream: NodeJS.ReadableStream) => {
+        if (err && !stream) return reject(err);
+        if (!stream) return resolve('');
+        let buf = '';
+        stream.on('data', (chunk: Buffer) => { buf += chunk.toString('utf8'); });
+        stream.on('end', () => resolve(buf.trim()));
+        (stream as NodeJS.ReadableStream & { on(e: 'close', l: () => void): void })
+          .on('close', () => resolve(buf.trim()));
+        stream.on('error', reject);
+      });
     });
-  });
+  } catch (err) {
+    // Extract payload bundled after "unexpected - " in the Dockerode error message
+    const msg = (err as Error).message ?? '';
+    const idx = msg.indexOf('unexpected - ');
+    raw = idx >= 0 ? msg.slice(idx + 'unexpected - '.length) : '';
+    if (!raw) throw err;
+  }
 
   // Strip ANSI escape codes and carriage returns that rcon-cli injects
-  const output = raw.replace(/\x1b\[[0-9;]*m/g, '').replace(/\r/g, '').trim();
+  const output = raw.replace(/\x1b\[[0-9;]*[\x40-\x7e]/g, '').replace(/\r/g, '').trim();
 
   if (output) {
     for (const line of output.split('\n')) {
