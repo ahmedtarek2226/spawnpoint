@@ -4,7 +4,7 @@ import { useConsole } from '../../hooks/useServerSocket';
 import { useServersStore } from '../../stores/serversStore';
 import { api } from '../../api/client';
 
-interface Line { text: string; ts: number; }
+interface Line { text: string; ts: number; sent?: boolean; }
 
 function colorize(line: string): string {
   return line
@@ -79,6 +79,11 @@ export default function ConsoleTab({ serverId }: { serverId: string }) {
       localStorage.setItem(`console_history_${serverId}`, JSON.stringify(next));
       return next;
     });
+    // Echo the command locally so the user sees it immediately
+    setLines((prev) => {
+      const next = [...prev, { text: `> ${cmd}`, ts: Date.now(), sent: true }];
+      return next.length > 1000 ? next.slice(-1000) : next;
+    });
     try {
       await api.post(`/servers/${serverId}/console/command`, { command: cmd });
     } catch (err: unknown) {
@@ -118,11 +123,9 @@ export default function ConsoleTab({ serverId }: { serverId: string }) {
         onClick={() => inputRef.current?.focus()}
       >
         {lines.map((l, i) => (
-          <div
-            key={i}
-            className="text-gray-300 whitespace-pre-wrap break-all"
-            dangerouslySetInnerHTML={{ __html: colorize(l.text) }}
-          />
+          l.sent
+            ? <div key={i} className="text-mc-green whitespace-pre-wrap break-all">{l.text}</div>
+            : <div key={i} className="text-gray-300 whitespace-pre-wrap break-all" dangerouslySetInnerHTML={{ __html: colorize(l.text) }} />
         ))}
         <div ref={bottomRef} />
       </div>
