@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
-import { Send, Copy, Check } from 'lucide-react';
+import { Send, Copy, Check, Trash2 } from 'lucide-react';
 import { useConsole, sendWs } from '../../hooks/useServerSocket';
+import { useServersStore } from '../../stores/serversStore';
 import { api } from '../../api/client';
 
 interface Line { text: string; ts: number; }
@@ -23,6 +24,12 @@ export default function ConsoleTab({ serverId }: { serverId: string }) {
   const [copied, setCopied] = useState(false);
   const bottomRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+  const status = useServersStore((s) => s.servers.find((sv) => sv.id === serverId)?.runtime.status);
+
+  // Clear console when server starts
+  useEffect(() => {
+    if (status === 'starting') setLines([]);
+  }, [status]);
 
   // Load history on mount
   useEffect(() => {
@@ -42,6 +49,10 @@ export default function ConsoleTab({ serverId }: { serverId: string }) {
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [lines]);
+
+  function clearConsole() {
+    setLines([]);
+  }
 
   function copyAll() {
     const text = lines.map((l) => l.text).join('\n');
@@ -95,6 +106,9 @@ export default function ConsoleTab({ serverId }: { serverId: string }) {
 
       {/* Input */}
       <div className="border-t border-mc-border p-3 flex gap-2">
+        <button onClick={clearConsole} className="btn-ghost p-1.5" title="Clear console">
+          <Trash2 size={14} />
+        </button>
         <button onClick={copyAll} className="btn-ghost p-1.5" title="Copy all output">
           {copied ? <Check size={14} className="text-mc-green" /> : <Copy size={14} />}
         </button>
