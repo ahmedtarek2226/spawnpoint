@@ -363,44 +363,28 @@ export async function sendCommand(config: ServerConfig, command: string): Promis
     Cmd: ['rcon-cli', '--password', config.rconPassword, command],
     AttachStdout: true,
     AttachStderr: true,
+    Tty: true, // plain stream — no 8-byte mux headers
   });
 
-  let raw: string;
-  try {
-    raw = await new Promise<string>((resolve, reject) => {
-      exec.start({ hijack: true }, (err: Error | null, stream: NodeJS.ReadableStream) => {
-        // Dockerode incorrectly surfaces HTTP 101 (stream upgrade) as an error,
-        // but still provides a valid stream — ignore the 101 and use the stream.
-        if (err && !stream) return reject(err);
-        if (!stream) return resolve('');
+  const raw = await new Promise<string>((resolve, reject) => {
+    exec.start({ hijack: true, Tty: true }, (err: Error | null, stream: NodeJS.ReadableStream) => {
+      // Dockerode may surface HTTP 101 (stream upgrade) as an error but still
+      // provide a valid stream. If stream exists, use it.
+      if (err && !stream) return reject(err);
+      if (!stream) return resolve('');
 
-        let buf = '';
-        stream.on('data', (chunk: Buffer) => {
-          let offset = 0;
-          while (offset + 8 <= chunk.length) {
-            const frameSize = chunk.readUInt32BE(offset + 4);
-            offset += 8;
-            if (frameSize > 0 && offset + frameSize <= chunk.length) {
-              buf += chunk.slice(offset, offset + frameSize).toString('utf8');
-            }
-            offset += frameSize;
-          }
-        });
-        stream.on('end', () => resolve(buf.trim()));
-        stream.on('error', reject);
-      });
+      let buf = '';
+      stream.on('data', (chunk: Buffer) => { buf += chunk.toString('utf8'); });
+      // hijacked streams emit 'close', not 'end'
+      stream.on('end', () => resolve(buf.trim()));
+      (stream as NodeJS.ReadableStream & { on(e: 'close', l: () => void): void })
+        .on('close', () => resolve(buf.trim()));
+      stream.on('error', reject);
     });
-  } catch (err) {
-    // Some Dockerode versions bundle the stream payload inside the error message
-    const msg = (err as Error).message ?? '';
-    const marker = 'unexpected - ';
-    const idx = msg.indexOf(marker);
-    raw = idx >= 0 ? msg.slice(idx + marker.length).trim() : '';
-    if (!raw) throw err;
-  }
+  });
 
-  // Strip ANSI escape codes that rcon-cli injects
-  const output = raw.replace(/\x1b\[[0-9;]*m/g, '').trim();
+  // Strip ANSI escape codes and carriage returns that rcon-cli injects
+  const output = raw.replace(/\x1b\[[0-9;]*m/g, '').replace(/\r/g, '').trim();
 
   if (output) {
     for (const line of output.split('\n')) {
