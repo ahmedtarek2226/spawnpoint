@@ -9,7 +9,7 @@ import { syncContainerStates, setBroadcast, checkDockerAvailable } from './servi
 import { broadcastToServer, createWsServer } from './ws/wsServer';
 import { errorHandler } from './middleware/errorHandler';
 import { authMiddleware } from './middleware/auth';
-import { PORT, PUBLIC_DIR, HOST_DATA_DIR, CORS_ORIGIN } from './config';
+import { PORT, PUBLIC_DIR, HOST_DATA_DIR, CORS_ORIGIN, APP_VERSION } from './config';
 
 import authRouter from './routes/auth';
 import serversRouter from './routes/servers';
@@ -43,7 +43,7 @@ async function main(): Promise<void> {
   // Health check (public)
   app.get('/api/health', async (_req, res) => {
     const dockerAvailable = await checkDockerAvailable();
-    res.json({ success: true, data: { dockerAvailable } });
+    res.json({ success: true, data: { dockerAvailable, version: APP_VERSION } });
   });
 
   // Auth routes are public (login/logout/check)

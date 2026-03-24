@@ -70,3 +70,5 @@ export const DASHBOARD_PASSWORD = process.env.DASHBOARD_PASSWORD ?? '';
 // CORS_ORIGIN: comma-separated list of allowed origins, or * for all.
 // If unset, CORS is disabled (same-origin only — recommended for production).
 export const CORS_ORIGIN = process.env.CORS_ORIGIN ?? '';
+
+export const APP_VERSION = process.env.BUILD_VERSION ?? 'dev';

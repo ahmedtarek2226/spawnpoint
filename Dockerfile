@@ -22,5 +22,8 @@ COPY backend/src ./src
 # Copy built frontend into the location the backend serves
 COPY --from=frontend-build /build/frontend/dist ./public
 
+ARG BUILD_VERSION=dev
+ENV BUILD_VERSION=$BUILD_VERSION
+
 EXPOSE 3000
 CMD ["bun", "run", "src/index.ts"]

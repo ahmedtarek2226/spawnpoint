@@ -1,5 +1,5 @@
 import { NavLink, useNavigate } from 'react-router-dom';
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Server, Plus, Upload, LayoutDashboard, X, LogOut, Search } from 'lucide-react';
 import { useServersStore } from '../../stores/serversStore';
 import StatusBadge from '../StatusBadge';
@@ -10,6 +10,14 @@ export default function Sidebar({ onClose }: { onClose?: () => void }) {
   const servers = useServersStore((s) => s.servers);
   const navigate = useNavigate();
   const [search, setSearch] = useState('');
+  const [version, setVersion] = useState<string | null>(null);
+
+  useEffect(() => {
+    fetch('/api/health')
+      .then(r => r.json())
+      .then(json => setVersion(json.data?.version ?? null))
+      .catch(() => {});
+  }, []);
 
   function nav(path: string) {
     navigate(path);
@@ -89,6 +97,9 @@ export default function Sidebar({ onClose }: { onClose?: () => void }) {
 
       {/* Actions */}
       <div className="p-2 border-t border-mc-border space-y-1">
+        {version && (
+          <div className="px-3 pb-1 text-xs text-mc-muted">{version}</div>
+        )}
         <button onClick={() => nav('/servers/new')} className="btn-ghost w-full justify-start text-xs">
           <Plus size={14} /> New Server
         </button>
