@@ -19,21 +19,46 @@ A self-hosted Minecraft server management dashboard. Run and manage multiple Min
 
 ## Setup
 
-1. Copy the example environment file and edit it:
+Create a `docker-compose.yml`:
 
-```bash
-cp .env.example .env
+```yaml
+services:
+  spawnpoint:
+    image: fossfrog/spawnpoint:latest
+    container_name: spawnpoint
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - /your/data/path:/app/data
+    environment:
+      - DATA_DIR=/app/data
+      - PORT=3000
+      - DASHBOARD_USER=admin
+      - DASHBOARD_PASSWORD=yourpassword
+      # Optional — only needed on Docker Desktop (macOS/Windows):
+      # - HOST_DATA_DIR=/your/data/path
 ```
 
-Set `HOST_DATA_DIR` to the absolute path where you want server data stored. Optionally set `DASHBOARD_USER` and `DASHBOARD_PASSWORD` to enable login.
+Replace `/your/data/path` with an absolute path on your host where server data will be stored.
 
-2. Start the dashboard:
+Start it:
 
 ```bash
 docker compose up -d
 ```
 
-3. Open `http://localhost:3000` in your browser.
+Open `http://localhost:3000` in your browser.
+
+### Building from source
+
+```bash
+git clone https://github.com/Gren-95/spawnpoint.git
+cd spawnpoint
+cp .env.example .env  # edit as needed
+docker compose up -d --build
+```
 
 ## Environment Variables
 
