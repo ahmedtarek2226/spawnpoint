@@ -1,7 +1,16 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Save } from 'lucide-react';
 import { api } from '../../api/client';
 import { useServersStore, type Server } from '../../stores/serversStore';
+
+interface DiskUsage { serverFiles: number; backups: number; total: number; }
+
+function fmtBytes(b: number): string {
+  if (b < 1024) return `${b} B`;
+  if (b < 1024 ** 2) return `${(b / 1024).toFixed(1)} KB`;
+  if (b < 1024 ** 3) return `${(b / 1024 ** 2).toFixed(1)} MB`;
+  return `${(b / 1024 ** 3).toFixed(2)} GB`;
+}
 
 const JAVA_VERSIONS = [
   { value: '8',        label: 'Java 8' },
@@ -24,6 +33,11 @@ export default function SettingsTab({ server }: { server: Server }) {
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
   const [error, setError] = useState('');
+  const [diskUsage, setDiskUsage] = useState<DiskUsage | null>(null);
+
+  useEffect(() => {
+    api.get<DiskUsage>(`/servers/${server.id}/disk-usage`).then(setDiskUsage).catch(() => {});
+  }, [server.id]);
 
   const set = (k: string, v: unknown) => setForm((f) => ({ ...f, [k]: v }));
 
@@ -81,6 +95,13 @@ export default function SettingsTab({ server }: { server: Server }) {
           <div>Type: <span className="text-gray-300">{server.type}</span></div>
           <div>MC Version: <span className="text-gray-300">{server.mcVersion}</span></div>
           <div>Created: <span className="text-gray-300">{new Date(server.createdAt).toLocaleString()}</span></div>
+          {diskUsage && (
+            <div className="pt-1 space-y-0.5">
+              <div>Server files: <span className="text-gray-300">{fmtBytes(diskUsage.serverFiles)}</span></div>
+              <div>Backups: <span className="text-gray-300">{fmtBytes(diskUsage.backups)}</span></div>
+              <div>Total: <span className="text-gray-300">{fmtBytes(diskUsage.total)}</span></div>
+            </div>
+          )}
         </div>
 
         {error && (

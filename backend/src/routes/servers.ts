@@ -8,9 +8,9 @@ import {
   getServerRuntime, syncContainerStates
 } from '../services/DockerManager';
 import { SERVER_TYPES, CrashIssue } from '../types';
-import { SERVERS_DIR } from '../config';
+import { SERVERS_DIR, BACKUPS_DIR } from '../config';
 import { getHostDataDir } from '../services/hostDataDir';
-import { safePath } from '../services/FileService';
+import { safePath, dirSizeSync } from '../services/FileService';
 
 const router = Router();
 
@@ -90,6 +90,17 @@ router.delete('/:id', async (req: Request, res: Response, next: NextFunction) =>
 
     deleteServer(server.id);
     res.json({ success: true });
+  } catch (err) { next(err); }
+});
+
+// Disk usage
+router.get('/:id/disk-usage', (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const server = getServer(req.params.id);
+    if (!server) return next(Object.assign(new Error('Server not found'), { status: 404 }));
+    const serverFiles = dirSizeSync(path.join(SERVERS_DIR, server.id));
+    const backups = dirSizeSync(path.join(BACKUPS_DIR, server.id));
+    res.json({ success: true, data: { serverFiles, backups, total: serverFiles + backups } });
   } catch (err) { next(err); }
 });
 

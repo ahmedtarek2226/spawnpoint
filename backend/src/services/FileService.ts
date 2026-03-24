@@ -73,6 +73,20 @@ export function makeDir(serverDir: string, relativePath: string): void {
   fs.mkdirSync(target, { recursive: true });
 }
 
+export function dirSizeSync(dirPath: string): number {
+  if (!fs.existsSync(dirPath)) return 0;
+  let total = 0;
+  for (const entry of fs.readdirSync(dirPath, { withFileTypes: true })) {
+    const full = path.join(dirPath, entry.name);
+    if (entry.isDirectory()) {
+      total += dirSizeSync(full);
+    } else {
+      try { total += fs.statSync(full).size; } catch { /* skip */ }
+    }
+  }
+  return total;
+}
+
 export function parseProperties(content: string): Record<string, string> {
   const result: Record<string, string> = {};
   for (const line of content.split('\n')) {
