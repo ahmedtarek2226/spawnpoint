@@ -3,6 +3,9 @@ import http from 'http';
 import { WsInbound, WsOutbound } from '../types';
 import { getConsoleBuf, sendCommand } from '../services/DockerManager';
 import { getServer } from '../models/Server';
+import { DASHBOARD_USER, DASHBOARD_PASSWORD } from '../config';
+import { activeSessions } from '../services/sessionStore';
+import { parseCookies, SESSION_COOKIE } from '../middleware/auth';
 
 const consoleSubs = new Map<string, Set<WebSocket>>();
 const metricsSubs = new Map<string, Set<WebSocket>>();
@@ -43,7 +46,24 @@ export function broadcastToServer(serverId: string, msg: WsOutbound): void {
 }
 
 export function createWsServer(server: http.Server): WebSocketServer {
-  const wss = new WebSocketServer({ server, path: '/ws' });
+  const wss = new WebSocketServer({ noServer: true });
+
+  server.on('upgrade', (req, socket, head) => {
+    if (req.url !== '/ws') { socket.destroy(); return; }
+
+    if (DASHBOARD_USER && DASHBOARD_PASSWORD) {
+      const token = parseCookies(req.headers.cookie ?? '')[SESSION_COOKIE];
+      if (!token || !activeSessions.has(token)) {
+        socket.write('HTTP/1.1 401 Unauthorized\r\n\r\n');
+        socket.destroy();
+        return;
+      }
+    }
+
+    wss.handleUpgrade(req, socket, head, (ws) => {
+      wss.emit('connection', ws, req);
+    });
+  });
 
   wss.on('connection', (ws) => {
     ws.on('message', async (raw) => {
