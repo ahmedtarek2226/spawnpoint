@@ -45,6 +45,12 @@ export default function ServerDetail() {
 
   const status = server.runtime.status;
 
+  // Check if another server is already active on the same port
+  const portConflict = servers.find(
+    (s) => s.id !== server.id && s.port === server.port &&
+      (s.runtime.status === 'running' || s.runtime.status === 'starting')
+  );
+
   async function action(name: string) {
     setActionLoading(name);
     setError('');
@@ -95,9 +101,20 @@ export default function ServerDetail() {
 
           <div className="flex items-center gap-1.5 flex-shrink-0">
             {(status === 'stopped' || status === 'crashed') && (
-              <button className="btn-primary text-sm" onClick={() => action('start')} disabled={!!actionLoading}>
-                <Play size={14} /> {actionLoading === 'start' ? 'Starting…' : 'Start'}
-              </button>
+              <div className="relative group">
+                <button
+                  className={`btn-primary text-sm ${portConflict ? 'opacity-60' : ''}`}
+                  onClick={() => action('start')}
+                  disabled={!!actionLoading}
+                >
+                  <Play size={14} /> {actionLoading === 'start' ? 'Starting…' : 'Start'}
+                </button>
+                {portConflict && (
+                  <div className="absolute right-0 top-full mt-1.5 z-10 hidden group-hover:block w-56 bg-yellow-900/90 border border-yellow-700 text-yellow-200 text-xs rounded px-2.5 py-2 shadow-lg">
+                    Port {server.port} is in use by <span className="font-semibold">{portConflict.name}</span>. Starting may fail.
+                  </div>
+                )}
+              </div>
             )}
             {status === 'running' && (
               <>
@@ -120,6 +137,11 @@ export default function ServerDetail() {
           </div>
         </div>
 
+        {portConflict && (status === 'stopped' || status === 'crashed') && (
+          <div className="mt-2 text-yellow-300 text-xs bg-yellow-900/20 border border-yellow-800 rounded px-2 py-1">
+            Port {server.port} is already in use by <span className="font-semibold">{portConflict.name}</span> — stop it first or change this server's port.
+          </div>
+        )}
         {error && (
           <div className="mt-2 text-red-400 text-xs bg-red-900/20 border border-red-800 rounded px-2 py-1">{error}</div>
         )}

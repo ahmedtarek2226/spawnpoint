@@ -140,6 +140,20 @@ router.post('/:id/start', async (req: Request, res: Response, next: NextFunction
   try {
     const server = getServer(req.params.id);
     if (!server) return next(Object.assign(new Error('Server not found'), { status: 404 }));
+
+    // Check for port conflict with another active server
+    const conflict = listServers().find((s) => {
+      if (s.id === server.id) return false;
+      const rt = getServerRuntime(s.id);
+      return s.port === server.port && (rt.status === 'running' || rt.status === 'starting');
+    });
+    if (conflict) {
+      return next(Object.assign(
+        new Error(`Port ${server.port} is already in use by "${conflict.name}"`),
+        { status: 409 }
+      ));
+    }
+
     await startServer(server);
     res.json({ success: true });
   } catch (err) { next(err); }
