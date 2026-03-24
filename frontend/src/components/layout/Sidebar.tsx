@@ -1,11 +1,15 @@
 import { NavLink, useNavigate } from 'react-router-dom';
-import { Server, Plus, Upload, LayoutDashboard, X, LogOut } from 'lucide-react';
+import { useState } from 'react';
+import { Server, Plus, Upload, LayoutDashboard, X, LogOut, Search } from 'lucide-react';
 import { useServersStore } from '../../stores/serversStore';
 import StatusBadge from '../StatusBadge';
+
+const SEARCH_THRESHOLD = 5;
 
 export default function Sidebar({ onClose }: { onClose?: () => void }) {
   const servers = useServersStore((s) => s.servers);
   const navigate = useNavigate();
+  const [search, setSearch] = useState('');
 
   function nav(path: string) {
     navigate(path);
@@ -48,7 +52,22 @@ export default function Sidebar({ onClose }: { onClose?: () => void }) {
 
         <div className="pt-2 pb-1 px-3 text-xs text-mc-muted uppercase tracking-wider">Servers</div>
 
-        {servers.map((sv) => (
+        {servers.length > SEARCH_THRESHOLD && (
+          <div className="px-2 pb-1">
+            <div className="flex items-center gap-1.5 bg-mc-dark border border-mc-border rounded px-2 py-1">
+              <Search size={11} className="text-mc-muted flex-shrink-0" />
+              <input
+                type="text"
+                placeholder="Filter servers…"
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                className="bg-transparent text-xs text-gray-300 placeholder-mc-muted outline-none flex-1 min-w-0"
+              />
+            </div>
+          </div>
+        )}
+
+        {servers.filter(sv => !search || sv.name.toLowerCase().includes(search.toLowerCase())).map((sv) => (
           <NavLink
             key={sv.id}
             to={`/servers/${sv.id}`}
@@ -62,6 +81,10 @@ export default function Sidebar({ onClose }: { onClose?: () => void }) {
             <StatusBadge status={sv.runtime.status} dot />
           </NavLink>
         ))}
+
+        {search && servers.filter(sv => sv.name.toLowerCase().includes(search.toLowerCase())).length === 0 && (
+          <p className="px-3 py-2 text-xs text-mc-muted">No servers match "{search}"</p>
+        )}
       </nav>
 
       {/* Actions */}
