@@ -6,6 +6,26 @@ import { parseCookies, SESSION_COOKIE, COOKIE_MAX_AGE } from '../middleware/auth
 
 const router = Router();
 
+// In-memory rate limiter: max 5 attempts per IP per 15 minutes
+const RATE_LIMIT = 5;
+const RATE_WINDOW_MS = 15 * 60 * 1000;
+const attempts = new Map<string, { count: number; resetAt: number }>();
+
+function isRateLimited(ip: string): boolean {
+  const now = Date.now();
+  const entry = attempts.get(ip);
+  if (!entry || now > entry.resetAt) {
+    attempts.set(ip, { count: 1, resetAt: now + RATE_WINDOW_MS });
+    return false;
+  }
+  entry.count++;
+  return entry.count > RATE_LIMIT;
+}
+
+function resetAttempts(ip: string): void {
+  attempts.delete(ip);
+}
+
 router.get('/check', (req, res) => {
   if (!DASHBOARD_USER || !DASHBOARD_PASSWORD) {
     res.json({ success: true, data: { required: false } });
@@ -18,6 +38,14 @@ router.get('/check', (req, res) => {
 router.post('/login', (req, res) => {
   if (!DASHBOARD_USER || !DASHBOARD_PASSWORD) {
     res.json({ success: true, data: {} });
+    return;
+  }
+
+  const ip = (req.headers['x-forwarded-for'] as string)?.split(',')[0].trim() ?? req.socket.remoteAddress ?? 'unknown';
+
+  if (isRateLimited(ip)) {
+    res.setHeader('Retry-After', String(Math.ceil(RATE_WINDOW_MS / 1000)));
+    res.status(429).json({ success: false, error: { message: 'Too many login attempts. Try again in 15 minutes.' } });
     return;
   }
 
@@ -34,6 +62,7 @@ router.post('/login', (req, res) => {
     return;
   }
 
+  resetAttempts(ip);
   const token = randomBytes(32).toString('hex');
   activeSessions.add(token);
   res.cookie(SESSION_COOKIE, token, { httpOnly: true, sameSite: 'lax', maxAge: COOKIE_MAX_AGE });
