@@ -41,7 +41,9 @@ router.post('/', async (req: Request, res: Response, next: NextFunction) => {
     const label = (req.body.label as string) || new Date().toLocaleString();
     const type: 'full' | 'world' = req.body.type === 'world' ? 'world' : 'full';
     const id = nanoid(10);
-    const filePath = path.join(BACKUPS_DIR, `${server.id}-${id}.tar.gz`);
+    const timestamp = new Date().toISOString().replace(/[:.]/g, '-').replace('T', '_').slice(0, 19);
+    const safeName = server.name.replace(/[^a-zA-Z0-9_-]/g, '_');
+    const filePath = path.join(BACKUPS_DIR, `${safeName}_${type}_${timestamp}.tar.gz`);
     const serverDir = path.join(SERVERS_DIR, server.id);
 
     const sizeBytes = type === 'world'
