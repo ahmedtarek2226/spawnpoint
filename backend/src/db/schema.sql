@@ -35,3 +35,16 @@ CREATE TABLE IF NOT EXISTS server_messages (
 );
 
 CREATE INDEX IF NOT EXISTS idx_server_messages_server_id ON server_messages(server_id);
+
+CREATE TABLE IF NOT EXISTS server_schedules (
+  id         TEXT PRIMARY KEY,
+  server_id  TEXT NOT NULL REFERENCES servers(id) ON DELETE CASCADE,
+  action     TEXT NOT NULL,
+  hour       INTEGER NOT NULL,
+  minute     INTEGER NOT NULL DEFAULT 0,
+  days       TEXT NOT NULL DEFAULT '[0,1,2,3,4,5,6]',
+  enabled    INTEGER NOT NULL DEFAULT 1,
+  created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE INDEX IF NOT EXISTS idx_server_schedules_server_id ON server_schedules(server_id);

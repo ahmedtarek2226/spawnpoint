@@ -4,7 +4,7 @@ import { Server, Plus, LayoutDashboard, X, LogOut, Search } from 'lucide-react';
 import { useServersStore } from '../../stores/serversStore';
 import StatusBadge from '../StatusBadge';
 
-const SEARCH_THRESHOLD = 5;
+const SEARCH_THRESHOLD = 3;
 
 export default function Sidebar({ onClose }: { onClose?: () => void }) {
   const servers = useServersStore((s) => s.servers);
@@ -75,7 +75,14 @@ export default function Sidebar({ onClose }: { onClose?: () => void }) {
           </div>
         )}
 
-        {servers.filter(sv => !search || sv.name.toLowerCase().includes(search.toLowerCase())).map((sv) => (
+        {servers.filter(sv => {
+          if (!search) return true;
+          const q = search.toLowerCase();
+          return sv.name.toLowerCase().includes(q) ||
+            sv.type.toLowerCase().includes(q) ||
+            sv.mcVersion.includes(q) ||
+            (sv.tags ?? []).some(t => t.toLowerCase().includes(q));
+        }).map((sv) => (
           <NavLink
             key={sv.id}
             to={`/servers/${sv.id}`}
@@ -90,7 +97,13 @@ export default function Sidebar({ onClose }: { onClose?: () => void }) {
           </NavLink>
         ))}
 
-        {search && servers.filter(sv => sv.name.toLowerCase().includes(search.toLowerCase())).length === 0 && (
+        {search && servers.filter(sv => {
+          const q = search.toLowerCase();
+          return sv.name.toLowerCase().includes(q) ||
+            sv.type.toLowerCase().includes(q) ||
+            sv.mcVersion.includes(q) ||
+            (sv.tags ?? []).some(t => t.toLowerCase().includes(q));
+        }).length === 0 && (
           <p className="px-3 py-2 text-xs text-mc-muted">No servers match "{search}"</p>
         )}
       </nav>

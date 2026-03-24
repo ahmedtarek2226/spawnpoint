@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { Archive, RotateCw, Trash2, Download, Plus, Globe, HardDrive, Package, Upload } from 'lucide-react';
+import { Archive, RotateCw, Trash2, Download, Plus, Globe, HardDrive, Package, Upload, Clock } from 'lucide-react';
 import { api } from '../../api/client';
 
 interface Backup {
@@ -24,10 +24,25 @@ interface BackupsData {
   modpackInfo: ModpackInfo;
 }
 
+interface BackupSchedule {
+  backupEnabled: boolean;
+  backupIntervalHours: number;
+  backupRetainCount: number;
+  backupLastAt: string | null;
+}
+
 function fmtSize(b: number) {
   if (b < 1024 * 1024) return `${(b / 1024).toFixed(0)} KB`;
   return `${(b / (1024 * 1024)).toFixed(1)} MB`;
 }
+
+const INTERVAL_OPTIONS = [
+  { label: 'Every 6 hours', value: 6 },
+  { label: 'Every 12 hours', value: 12 },
+  { label: 'Every 24 hours', value: 24 },
+  { label: 'Every 2 days', value: 48 },
+  { label: 'Every week', value: 168 },
+];
 
 export default function BackupsTab({ serverId }: { serverId: string }) {
   const [data, setData] = useState<BackupsData | null>(null);
@@ -40,6 +55,13 @@ export default function BackupsTab({ serverId }: { serverId: string }) {
   const [restoring, setRestoring] = useState<string | null>(null);
   const [uploading, setUploading] = useState(false);
   const uploadRef = useRef<HTMLInputElement>(null);
+  const [schedule, setSchedule] = useState<BackupSchedule>({
+    backupEnabled: false,
+    backupIntervalHours: 24,
+    backupRetainCount: 5,
+    backupLastAt: null,
+  });
+  const [savingSchedule, setSavingSchedule] = useState(false);
 
   const label = baseLabel ? `${baseLabel}_${backupType}` : '';
 
@@ -52,8 +74,17 @@ export default function BackupsTab({ serverId }: { serverId: string }) {
 
   async function load(resetLabel = false) {
     try {
-      const d = await api.get<BackupsData>(`/servers/${serverId}/backups`);
+      const [d, srv] = await Promise.all([
+        api.get<BackupsData>(`/servers/${serverId}/backups`),
+        api.get<BackupSchedule & Record<string, unknown>>(`/servers/${serverId}`),
+      ]);
       setData(d);
+      setSchedule({
+        backupEnabled: srv.backupEnabled ?? false,
+        backupIntervalHours: srv.backupIntervalHours ?? 24,
+        backupRetainCount: srv.backupRetainCount ?? 5,
+        backupLastAt: srv.backupLastAt ?? null,
+      });
       const suggested = deriveSuggested(d.modpackInfo);
       if (suggested) {
         setSuggestedBase(suggested);
@@ -63,6 +94,22 @@ export default function BackupsTab({ serverId }: { serverId: string }) {
       setError(e instanceof Error ? e.message : 'Failed to load backups');
     }
     setLoading(false);
+  }
+
+  async function saveSchedule(patch: Partial<BackupSchedule>) {
+    const next = { ...schedule, ...patch };
+    setSchedule(next);
+    setSavingSchedule(true);
+    try {
+      await api.patch(`/servers/${serverId}`, {
+        backupEnabled: next.backupEnabled,
+        backupIntervalHours: next.backupIntervalHours,
+        backupRetainCount: next.backupRetainCount,
+      });
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : 'Failed to save schedule');
+    }
+    setSavingSchedule(false);
   }
 
   useEffect(() => { load(); }, [serverId]);
@@ -181,6 +228,61 @@ export default function BackupsTab({ serverId }: { serverId: string }) {
           </div>
         </div>
       )}
+
+      {/* Auto-backup schedule */}
+      <div className="card p-3 space-y-3">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <Clock size={14} className="text-mc-green" />
+            <span className="text-sm font-medium text-gray-300">Auto backup</span>
+          </div>
+          <button
+            onClick={() => saveSchedule({ backupEnabled: !schedule.backupEnabled })}
+            disabled={savingSchedule}
+            className={`text-xs px-3 py-1 rounded border transition-colors ${
+              schedule.backupEnabled
+                ? 'border-mc-green bg-mc-green/10 text-mc-green'
+                : 'border-mc-border text-mc-muted hover:border-gray-500'
+            }`}
+          >
+            {schedule.backupEnabled ? 'Enabled' : 'Disabled'}
+          </button>
+        </div>
+
+        {schedule.backupEnabled && (
+          <div className="space-y-2 pt-1 border-t border-mc-border">
+            <div className="flex items-center gap-3">
+              <label className="text-xs text-mc-muted w-24">Interval</label>
+              <select
+                className="input text-xs py-1 flex-1"
+                value={schedule.backupIntervalHours}
+                onChange={e => saveSchedule({ backupIntervalHours: Number(e.target.value) })}
+              >
+                {INTERVAL_OPTIONS.map(o => (
+                  <option key={o.value} value={o.value}>{o.label}</option>
+                ))}
+              </select>
+            </div>
+            <div className="flex items-center gap-3">
+              <label className="text-xs text-mc-muted w-24">Keep last</label>
+              <select
+                className="input text-xs py-1 flex-1"
+                value={schedule.backupRetainCount}
+                onChange={e => saveSchedule({ backupRetainCount: Number(e.target.value) })}
+              >
+                {[3, 5, 7, 10, 14, 30].map(n => (
+                  <option key={n} value={n}>{n} backups</option>
+                ))}
+              </select>
+            </div>
+            {schedule.backupLastAt && (
+              <p className="text-xs text-mc-muted pt-0.5">
+                Last auto backup: {new Date(schedule.backupLastAt).toLocaleString()}
+              </p>
+            )}
+          </div>
+        )}
+      </div>
 
       {error && (
         <div className="bg-red-900/30 border border-red-700 text-red-400 rounded px-3 py-2 text-sm">{error}</div>

@@ -13,6 +13,10 @@ interface ServerRow {
   rcon_password: string;
   host_directory: string;
   tags: string;
+  backup_enabled: number;
+  backup_interval_hours: number;
+  backup_retain_count: number;
+  backup_last_at: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -30,6 +34,10 @@ function rowToConfig(row: ServerRow): ServerConfig {
     rconPassword: row.rcon_password,
     hostDirectory: row.host_directory,
     tags: JSON.parse(row.tags ?? '[]'),
+    backupEnabled: row.backup_enabled === 1,
+    backupIntervalHours: row.backup_interval_hours ?? 24,
+    backupRetainCount: row.backup_retain_count ?? 5,
+    backupLastAt: row.backup_last_at ?? null,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };
@@ -63,7 +71,12 @@ export function createServer(config: Omit<ServerConfig, 'createdAt' | 'updatedAt
   return getServer(config.id)!;
 }
 
-export function updateServer(id: string, patch: Partial<Pick<ServerConfig, 'name' | 'jvmFlags' | 'memoryMb' | 'port' | 'javaVersion' | 'tags'>>): ServerConfig | undefined {
+type ServerPatch = Partial<Pick<ServerConfig,
+  'name' | 'jvmFlags' | 'memoryMb' | 'port' | 'javaVersion' | 'tags' |
+  'backupEnabled' | 'backupIntervalHours' | 'backupRetainCount' | 'backupLastAt'
+>>;
+
+export function updateServer(id: string, patch: ServerPatch): ServerConfig | undefined {
   const fields: string[] = [];
   const params: Record<string, unknown> = { $id: id };
 
@@ -73,6 +86,10 @@ export function updateServer(id: string, patch: Partial<Pick<ServerConfig, 'name
   if (patch.port !== undefined) { fields.push('port = $port'); params.$port = patch.port; }
   if (patch.javaVersion !== undefined) { fields.push('java_version = $javaVersion'); params.$javaVersion = patch.javaVersion; }
   if (patch.tags !== undefined) { fields.push('tags = $tags'); params.$tags = JSON.stringify(patch.tags); }
+  if (patch.backupEnabled !== undefined) { fields.push('backup_enabled = $backupEnabled'); params.$backupEnabled = patch.backupEnabled ? 1 : 0; }
+  if (patch.backupIntervalHours !== undefined) { fields.push('backup_interval_hours = $backupIntervalHours'); params.$backupIntervalHours = patch.backupIntervalHours; }
+  if (patch.backupRetainCount !== undefined) { fields.push('backup_retain_count = $backupRetainCount'); params.$backupRetainCount = patch.backupRetainCount; }
+  if (patch.backupLastAt !== undefined) { fields.push('backup_last_at = $backupLastAt'); params.$backupLastAt = patch.backupLastAt; }
 
   if (fields.length === 0) return getServer(id);
 

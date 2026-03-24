@@ -1,6 +1,6 @@
 import { useNavigate } from 'react-router-dom';
 import { useEffect, useState } from 'react';
-import { Plus, MemoryStick, Users, Server, AlertTriangle } from 'lucide-react';
+import { Plus, MemoryStick, Users, Server, AlertTriangle, Search } from 'lucide-react';
 import { useServersStore } from '../stores/serversStore';
 import StatusBadge from '../components/StatusBadge';
 
@@ -16,6 +16,7 @@ export default function Dashboard() {
   const navigate = useNavigate();
   const [dockerAvailable, setDockerAvailable] = useState(true);
   const [activeTag, setActiveTag] = useState<string | null>(null);
+  const [search, setSearch] = useState('');
 
   useEffect(() => {
     fetch('/api/health')
@@ -26,7 +27,16 @@ export default function Dashboard() {
 
   const running = servers.filter(s => s.runtime.status === 'running').length;
   const allTags = [...new Set(servers.flatMap(s => s.tags ?? []))].sort();
-  const visibleServers = activeTag ? servers.filter(s => (s.tags ?? []).includes(activeTag)) : servers;
+  const visibleServers = servers.filter(s => {
+    const matchesTag = !activeTag || (s.tags ?? []).includes(activeTag);
+    const q = search.trim().toLowerCase();
+    const matchesSearch = !q ||
+      s.name.toLowerCase().includes(q) ||
+      s.type.toLowerCase().includes(q) ||
+      s.mcVersion.includes(q) ||
+      (s.tags ?? []).some(t => t.toLowerCase().includes(q));
+    return matchesTag && matchesSearch;
+  });
 
   return (
     <div className="p-4 md:p-6 space-y-4 md:space-y-6">
@@ -44,6 +54,17 @@ export default function Dashboard() {
           <p className="text-mc-muted text-sm mt-1">{running} of {servers.length} servers running</p>
         </div>
         <div className="flex gap-2">
+          {servers.length > 0 && (
+            <div className="relative">
+              <Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-mc-muted pointer-events-none" />
+              <input
+                className="input pl-8 text-sm w-48"
+                placeholder="Search…"
+                value={search}
+                onChange={e => setSearch(e.target.value)}
+              />
+            </div>
+          )}
           <button onClick={() => navigate('/servers/new')} className="btn-primary text-sm">
             <Plus size={15} /> Add Server
           </button>

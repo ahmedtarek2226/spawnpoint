@@ -7,6 +7,8 @@ import { initDb } from './db/database';
 import { listServers } from './models/Server';
 import { syncContainerStates, setBroadcast, checkDockerAvailable, sendCommand } from './services/DockerManager';
 import { init as initMessageScheduler } from './services/MessageScheduler';
+import { startServerScheduler } from './services/ServerScheduler';
+import { startBackupScheduler } from './services/BackupScheduler';
 import { broadcastToServer, createWsServer } from './ws/wsServer';
 import { errorHandler } from './middleware/errorHandler';
 import { authMiddleware } from './middleware/auth';
@@ -21,6 +23,7 @@ import prismRouter from './routes/prism';
 import playersRouter from './routes/players';
 import importBackupRouter from './routes/importBackup';
 import messagesRouter from './routes/messages';
+import schedulesRouter from './routes/schedules';
 
 async function main(): Promise<void> {
   if (!path.isAbsolute(HOST_DATA_DIR)) {
@@ -64,6 +67,7 @@ async function main(): Promise<void> {
   app.use('/api/prism', prismRouter);
   app.use('/api/backups', importBackupRouter);
   app.use('/api/servers/:id/messages', messagesRouter);
+  app.use('/api/servers/:id/schedules', schedulesRouter);
 
   // Serve frontend (no auth — the SPA handles the login UI)
   if (fs.existsSync(PUBLIC_DIR)) {
@@ -80,6 +84,8 @@ async function main(): Promise<void> {
 
   setBroadcast(broadcastToServer);
   initMessageScheduler(sendCommand);
+  startServerScheduler();
+  startBackupScheduler();
 
   const dockerAvailable = await checkDockerAvailable();
   if (!dockerAvailable) {

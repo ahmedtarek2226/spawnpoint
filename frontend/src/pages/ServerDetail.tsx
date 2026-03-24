@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useParams, useNavigate, Routes, Route, NavLink } from 'react-router-dom';
-import { Play, Square, RotateCw, Zap, Trash2, Terminal, FolderOpen, Settings, Archive, Package, Users, MessageSquare } from 'lucide-react';
+import { Play, Square, RotateCw, Zap, Trash2, Terminal, FolderOpen, Settings, Archive, Package, Users, MessageSquare, CalendarClock } from 'lucide-react';
 import { api } from '../api/client';
 import { useServersStore } from '../stores/serversStore';
 import StatusBadge from '../components/StatusBadge';
@@ -13,6 +13,7 @@ import BackupsTab from './tabs/BackupsTab';
 import SettingsTab from './tabs/SettingsTab';
 import PlayersTab from './tabs/PlayersTab';
 import MessagesTab from './tabs/MessagesTab';
+import ScheduleTab from './tabs/ScheduleTab';
 
 const TABS = [
   { path: '', label: 'Console', icon: Terminal },
@@ -22,6 +23,7 @@ const TABS = [
   { path: 'mods', label: 'Mods/Plugins', icon: Package },
   { path: 'backups', label: 'Backups', icon: Archive },
   { path: 'messages', label: 'Messages', icon: MessageSquare },
+  { path: 'schedule', label: 'Schedule', icon: CalendarClock },
   { path: 'settings', label: 'Settings', icon: Settings },
 ];
 
@@ -194,6 +196,7 @@ export default function ServerDetail() {
           <Route path="mods" element={<ModsTab serverId={id!} />} />
           <Route path="backups" element={<BackupsTab serverId={id!} />} />
           <Route path="messages" element={<MessagesTab serverId={id!} />} />
+          <Route path="schedule" element={<ScheduleTab serverId={id!} />} />
           <Route path="settings" element={<SettingsTab server={server} />} />
         </Routes>
       </div>

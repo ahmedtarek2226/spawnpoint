@@ -23,6 +23,10 @@ export interface ServerConfig {
   rconPassword: string;
   hostDirectory: string;
   tags: string[];
+  backupEnabled: boolean;
+  backupIntervalHours: number;
+  backupRetainCount: number;
+  backupLastAt: string | null;
   createdAt: string;
   updatedAt: string;
 }
