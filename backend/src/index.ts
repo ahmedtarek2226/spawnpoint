@@ -24,6 +24,7 @@ import playersRouter from './routes/players';
 import importBackupRouter from './routes/importBackup';
 import messagesRouter from './routes/messages';
 import schedulesRouter from './routes/schedules';
+import modrinthRouter from './routes/modrinth';
 
 async function main(): Promise<void> {
   if (!path.isAbsolute(HOST_DATA_DIR)) {
@@ -68,6 +69,7 @@ async function main(): Promise<void> {
   app.use('/api/backups', importBackupRouter);
   app.use('/api/servers/:id/messages', messagesRouter);
   app.use('/api/servers/:id/schedules', schedulesRouter);
+  app.use('/api/servers/:id/modrinth', modrinthRouter);
 
   // Serve frontend (no auth — the SPA handles the login UI)
   if (fs.existsSync(PUBLIC_DIR)) {

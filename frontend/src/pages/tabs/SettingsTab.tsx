@@ -5,6 +5,7 @@ import { api } from '../../api/client';
 import { useServersStore, type Server } from '../../stores/serversStore';
 
 interface DiskUsage { serverFiles: number; backups: number; total: number; }
+interface VersionCheck { current: string; latestRelease: string; latestSnapshot: string; hasUpdate: boolean; }
 
 function fmtBytes(b: number): string {
   if (b < 1024) return `${b} B`;
@@ -52,9 +53,11 @@ export default function SettingsTab({ server }: { server: Server }) {
   const [duplicating, setDuplicating] = useState(false);
   const [error, setError] = useState('');
   const [diskUsage, setDiskUsage] = useState<DiskUsage | null>(null);
+  const [versionCheck, setVersionCheck] = useState<VersionCheck | null>(null);
 
   useEffect(() => {
     api.get<DiskUsage>(`/servers/${server.id}/disk-usage`).then(setDiskUsage).catch(() => {});
+    api.get<VersionCheck>(`/servers/${server.id}/version-check`).then(setVersionCheck).catch(() => {});
   }, [server.id]);
 
   const set = (k: string, v: unknown) => setForm((f) => ({ ...f, [k]: v }));
@@ -205,7 +208,14 @@ export default function SettingsTab({ server }: { server: Server }) {
 
         <div className="pt-2 border-t border-mc-border text-xs text-mc-muted space-y-1">
           <div>Type: <span className="text-gray-300">{server.type}</span></div>
-          <div>MC Version: <span className="text-gray-300">{server.mcVersion}</span></div>
+          <div className="flex items-center gap-2 flex-wrap">
+            MC Version: <span className="text-gray-300">{server.mcVersion}</span>
+            {versionCheck?.hasUpdate && (
+              <span className="text-xs bg-yellow-900/30 border border-yellow-700/50 text-yellow-400 px-1.5 py-0.5 rounded">
+                Update available: {versionCheck.latestRelease}
+              </span>
+            )}
+          </div>
           <div>Created: <span className="text-gray-300">{new Date(server.createdAt).toLocaleString()}</span></div>
           {diskUsage && (
             <div className="pt-1 space-y-0.5">

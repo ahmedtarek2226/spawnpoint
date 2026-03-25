@@ -147,6 +147,34 @@ router.get('/:id/disk-usage', (req: Request, res: Response, next: NextFunction) 
   } catch (err) { next(err); }
 });
 
+// MC version check — cached manifest from Mojang
+let versionCache: { latestRelease: string; latestSnapshot: string; fetchedAt: number } | null = null;
+
+router.get('/:id/version-check', async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const server = getServer(req.params.id);
+    if (!server) return next(Object.assign(new Error('Server not found'), { status: 404 }));
+
+    const now = Date.now();
+    if (!versionCache || now - versionCache.fetchedAt > 6 * 60 * 60 * 1000) {
+      const resp = await fetch('https://launchermeta.mojang.com/mc/game/version_manifest_v2.json');
+      if (!resp.ok) throw new Error('Failed to fetch Mojang version manifest');
+      const manifest = await resp.json() as { latest: { release: string; snapshot: string } };
+      versionCache = { latestRelease: manifest.latest.release, latestSnapshot: manifest.latest.snapshot, fetchedAt: now };
+    }
+
+    res.json({
+      success: true,
+      data: {
+        current: server.mcVersion,
+        latestRelease: versionCache.latestRelease,
+        latestSnapshot: versionCache.latestSnapshot,
+        hasUpdate: versionCache.latestRelease !== server.mcVersion,
+      },
+    });
+  } catch (err) { next(err); }
+});
+
 // Server lifecycle
 router.post('/:id/start', async (req: Request, res: Response, next: NextFunction) => {
   try {
