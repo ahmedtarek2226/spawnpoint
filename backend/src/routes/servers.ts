@@ -10,7 +10,7 @@ import {
 import { SERVER_TYPES, CrashIssue } from '../types';
 import { SERVERS_DIR, BACKUPS_DIR } from '../config';
 import { getHostDataDir } from '../services/hostDataDir';
-import { safePath, dirSizeSync } from '../services/FileService';
+import { safePath, dirSizeSync, readFile, writeFile, parseProperties, stringifyProperties } from '../services/FileService';
 
 const router = Router();
 
@@ -69,6 +69,18 @@ router.patch('/:id', async (req: Request, res: Response, next: NextFunction) => 
     if (!server) return next(Object.assign(new Error('Server not found'), { status: 404 }));
 
     const updated = updateServer(server.id, req.body);
+
+    // If rconPassword changed, propagate to server.properties
+    if (req.body.rconPassword && typeof req.body.rconPassword === 'string') {
+      const serverDir = path.join(SERVERS_DIR, server.id);
+      try {
+        const existing = readFile(serverDir, 'server.properties');
+        const props = parseProperties(existing);
+        props['rcon.password'] = req.body.rconPassword;
+        writeFile(serverDir, 'server.properties', stringifyProperties(props));
+      } catch { /* file may not exist yet — that's fine, it'll be created on first start */ }
+    }
+
     res.json({ success: true, data: updated });
   } catch (err) { next(err); }
 });

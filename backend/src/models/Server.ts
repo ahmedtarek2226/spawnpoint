@@ -17,6 +17,7 @@ interface ServerRow {
   backup_interval_hours: number;
   backup_retain_count: number;
   backup_last_at: string | null;
+  discord_webhook_url: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -38,6 +39,7 @@ function rowToConfig(row: ServerRow): ServerConfig {
     backupIntervalHours: row.backup_interval_hours ?? 24,
     backupRetainCount: row.backup_retain_count ?? 5,
     backupLastAt: row.backup_last_at ?? null,
+    discordWebhookUrl: row.discord_webhook_url ?? null,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };
@@ -73,7 +75,8 @@ export function createServer(config: Omit<ServerConfig, 'createdAt' | 'updatedAt
 
 type ServerPatch = Partial<Pick<ServerConfig,
   'name' | 'jvmFlags' | 'memoryMb' | 'port' | 'javaVersion' | 'tags' |
-  'backupEnabled' | 'backupIntervalHours' | 'backupRetainCount' | 'backupLastAt'
+  'backupEnabled' | 'backupIntervalHours' | 'backupRetainCount' | 'backupLastAt' |
+  'rconPassword' | 'discordWebhookUrl'
 >>;
 
 export function updateServer(id: string, patch: ServerPatch): ServerConfig | undefined {
@@ -90,6 +93,8 @@ export function updateServer(id: string, patch: ServerPatch): ServerConfig | und
   if (patch.backupIntervalHours !== undefined) { fields.push('backup_interval_hours = $backupIntervalHours'); params.$backupIntervalHours = patch.backupIntervalHours; }
   if (patch.backupRetainCount !== undefined) { fields.push('backup_retain_count = $backupRetainCount'); params.$backupRetainCount = patch.backupRetainCount; }
   if (patch.backupLastAt !== undefined) { fields.push('backup_last_at = $backupLastAt'); params.$backupLastAt = patch.backupLastAt; }
+  if (patch.rconPassword !== undefined) { fields.push('rcon_password = $rconPassword'); params.$rconPassword = patch.rconPassword; }
+  if (patch.discordWebhookUrl !== undefined) { fields.push('discord_webhook_url = $discordWebhookUrl'); params.$discordWebhookUrl = patch.discordWebhookUrl; }
 
   if (fields.length === 0) return getServer(id);
 

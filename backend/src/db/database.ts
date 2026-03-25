@@ -32,4 +32,5 @@ export function initDb(): void {
   try { db.exec("ALTER TABLE servers ADD COLUMN backup_interval_hours INTEGER NOT NULL DEFAULT 24"); } catch { /* already exists */ }
   try { db.exec("ALTER TABLE servers ADD COLUMN backup_retain_count INTEGER NOT NULL DEFAULT 5"); } catch { /* already exists */ }
   try { db.exec("ALTER TABLE servers ADD COLUMN backup_last_at TEXT"); } catch { /* already exists */ }
+  try { db.exec("ALTER TABLE servers ADD COLUMN discord_webhook_url TEXT"); } catch { /* already exists */ }
 }

@@ -27,6 +27,7 @@ export interface ServerConfig {
   backupIntervalHours: number;
   backupRetainCount: number;
   backupLastAt: string | null;
+  discordWebhookUrl: string | null;
   createdAt: string;
   updatedAt: string;
 }

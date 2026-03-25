@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Save, Copy, X, Plus } from 'lucide-react';
+import { Save, Copy, X, Plus, RefreshCw, Eye, EyeOff } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { api } from '../../api/client';
 import { useServersStore, type Server } from '../../stores/serversStore';
@@ -42,7 +42,10 @@ export default function SettingsTab({ server }: { server: Server }) {
     jvmFlags: server.jvmFlags,
     javaVersion: server.javaVersion ?? '21',
     tags: server.tags ?? [] as string[],
+    rconPassword: (server as unknown as Record<string, string>).rconPassword ?? '',
+    discordWebhookUrl: (server as unknown as Record<string, string | null>).discordWebhookUrl ?? '',
   });
+  const [showRcon, setShowRcon] = useState(false);
   const [tagInput, setTagInput] = useState('');
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
@@ -151,6 +154,48 @@ export default function SettingsTab({ server }: { server: Server }) {
             </button>
           </div>
           <p className="text-xs text-mc-muted mt-1">Press Enter or comma to add. Used to filter servers on the dashboard.</p>
+        </div>
+
+        <div>
+          <label className="label">RCON Password</label>
+          <div className="flex gap-2">
+            <div className="relative flex-1">
+              <input
+                className="input w-full font-mono pr-8"
+                type={showRcon ? 'text' : 'password'}
+                value={form.rconPassword}
+                onChange={e => set('rconPassword', e.target.value)}
+              />
+              <button
+                type="button"
+                className="absolute right-2 top-1/2 -translate-y-1/2 text-mc-muted hover:text-gray-300"
+                onClick={() => setShowRcon((v) => !v)}
+              >
+                {showRcon ? <EyeOff size={13} /> : <Eye size={13} />}
+              </button>
+            </div>
+            <button
+              type="button"
+              className="btn-ghost px-3 text-xs flex-shrink-0"
+              title="Regenerate password"
+              onClick={() => set('rconPassword', Array.from(crypto.getRandomValues(new Uint8Array(18))).map(b => b.toString(36)).join('').slice(0, 24))}
+            >
+              <RefreshCw size={13} />
+            </button>
+          </div>
+          <p className="text-xs text-mc-muted mt-1">Requires restart. Also updates server.properties if the file exists.</p>
+        </div>
+
+        <div>
+          <label className="label">Discord Webhook URL</label>
+          <input
+            className="input"
+            type="url"
+            placeholder="https://discord.com/api/webhooks/…"
+            value={form.discordWebhookUrl}
+            onChange={e => set('discordWebhookUrl', e.target.value)}
+          />
+          <p className="text-xs text-mc-muted mt-1">Receive notifications for server start, stop, crash, player joins, and auto-backups.</p>
         </div>
 
         <div>
