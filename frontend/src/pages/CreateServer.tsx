@@ -55,97 +55,121 @@ export default function CreateServer() {
 
   return (
     <div className="p-6 max-w-2xl">
-      <h1 className="text-2xl font-bold mb-2">Add Server</h1>
-      <p className="text-mc-muted text-sm mb-8">Choose how you want to create your server.</p>
+      {/* Header */}
+      <div className="mb-8">
+        <div className="text-xs font-mono tracking-widest uppercase text-mc-muted mb-1">spawnpoint</div>
+        <h1 className="text-3xl font-bold tracking-tight">Add Server</h1>
+        <p className="text-mc-muted text-sm mt-1 font-mono">Configure your next world.</p>
+      </div>
 
-      <div className="grid grid-cols-1 gap-4">
-        <button
-          onClick={() => setMode('new')}
-          className="card p-5 text-left hover:border-mc-green/60 transition-colors group flex items-start gap-4"
-        >
-          <div className="p-2.5 rounded-lg bg-mc-green/10 text-mc-green group-hover:bg-mc-green/20 transition-colors flex-shrink-0">
-            <Server size={22} />
+      {/* Hero: New Server */}
+      <button
+        onClick={() => setMode('new')}
+        className="w-full card p-5 text-left group relative overflow-hidden mb-6 hover:border-mc-green/50 transition-all duration-200"
+        style={{ background: 'linear-gradient(135deg, #242424 0%, #1d261d 100%)' }}
+      >
+        <div className="absolute inset-0 opacity-[0.04]" style={{
+          backgroundImage: 'linear-gradient(#5da832 1px, transparent 1px), linear-gradient(90deg, #5da832 1px, transparent 1px)',
+          backgroundSize: '20px 20px',
+        }} />
+        <div className="relative flex items-center gap-4">
+          <div className="p-3 rounded-lg border border-mc-green/30 bg-mc-green/10 text-mc-green group-hover:bg-mc-green/20 group-hover:border-mc-green/50 transition-all duration-200 flex-shrink-0">
+            <Server size={26} />
           </div>
-          <div>
-            <div className="font-semibold text-gray-100 group-hover:text-mc-green transition-colors">New Server</div>
-            <div className="text-sm text-mc-muted mt-0.5">Start from scratch. Choose type, version, and settings.</div>
-          </div>
-        </button>
-
-        <button
-          onClick={() => setMode('prism')}
-          className="card p-5 text-left hover:border-mc-green/60 transition-colors group flex items-start gap-4"
-        >
-          <div className="p-2.5 rounded-lg bg-mc-green/10 text-mc-green group-hover:bg-mc-green/20 transition-colors flex-shrink-0">
-            <Upload size={22} />
-          </div>
-          <div>
-            <div className="font-semibold text-gray-100 group-hover:text-mc-green transition-colors">Import from Prism Launcher</div>
-            <div className="text-sm text-mc-muted mt-0.5">Upload a Prism export .zip — mods, configs and version auto-detected.</div>
-          </div>
-        </button>
-
-        <button
-          onClick={() => setMode('modrinth-pack')}
-          className="card p-5 text-left hover:border-mc-green/60 transition-colors group flex items-start gap-4"
-        >
-          <div className="p-2.5 rounded-lg bg-mc-green/10 text-mc-green group-hover:bg-mc-green/20 transition-colors flex-shrink-0">
-            <Search size={22} />
-          </div>
-          <div>
-            <div className="font-semibold text-gray-100 group-hover:text-mc-green transition-colors">Browse Modrinth Modpacks</div>
-            <div className="text-sm text-mc-muted mt-0.5">Search and install a modpack directly from Modrinth — no file download needed.</div>
-          </div>
-        </button>
-
-        <button
-          onClick={() => setMode('mrpack')}
-          className="card p-5 text-left hover:border-mc-green/60 transition-colors group flex items-start gap-4"
-        >
-          <div className="p-2.5 rounded-lg bg-mc-green/10 text-mc-green group-hover:bg-mc-green/20 transition-colors flex-shrink-0">
-            <Package size={22} />
-          </div>
-          <div>
-            <div className="font-semibold text-gray-100 group-hover:text-mc-green transition-colors">Import Modrinth Pack (.mrpack)</div>
-            <div className="text-sm text-mc-muted mt-0.5">Upload a .mrpack file — server-compatible mods downloaded automatically.</div>
-          </div>
-        </button>
-
-        <button
-          onClick={() => cfEnabled && setMode('cf-pack')}
-          disabled={!cfEnabled}
-          title={!cfEnabled ? 'Set CURSEFORGE_API_KEY in your environment to unlock' : undefined}
-          className={`card p-5 text-left transition-colors group flex items-start gap-4 ${cfEnabled ? 'hover:border-mc-green/60 cursor-pointer' : 'opacity-50 cursor-not-allowed'}`}
-        >
-          <div className={`p-2.5 rounded-lg bg-mc-green/10 text-mc-green flex-shrink-0 ${cfEnabled ? 'group-hover:bg-mc-green/20' : ''} transition-colors`}>
-            <Search size={22} />
-          </div>
-          <div className="flex-1">
-            <div className="flex items-center gap-2">
-              <div className={`font-semibold text-gray-100 ${cfEnabled ? 'group-hover:text-mc-green' : ''} transition-colors`}>Browse CurseForge Modpacks</div>
-              {!cfEnabled && <Lock size={13} className="text-mc-muted" />}
+          <div className="flex-1 min-w-0">
+            <div className="flex items-center gap-2 mb-0.5">
+              <span className="font-bold text-base text-gray-100 group-hover:text-mc-green transition-colors duration-200">New Server</span>
+              <span className="text-xs text-mc-green border border-mc-green/30 rounded px-1.5 py-px font-mono leading-none">recommended</span>
             </div>
-            <div className="text-sm text-mc-muted mt-0.5">
-              {cfEnabled ? 'Search and install from CurseForge — covers ATM, FTB, RLCraft and more.' : 'Set CURSEFORGE_API_KEY to unlock. Get a free key at console.curseforge.com'}
-            </div>
+            <div className="text-sm text-mc-muted">Start from scratch — choose server type, MC version, memory and Java.</div>
           </div>
-        </button>
+          <ChevronRight size={18} className="text-mc-muted group-hover:text-mc-green group-hover:translate-x-0.5 transition-all duration-200 flex-shrink-0" />
+        </div>
+      </button>
+
+      {/* Browse & Install */}
+      <div className="mb-5">
+        <div className="flex items-center gap-3 mb-3">
+          <span className="text-xs font-mono tracking-widest uppercase text-mc-muted whitespace-nowrap">Browse &amp; Install</span>
+          <div className="flex-1 h-px bg-mc-border" />
+        </div>
+        <div className="grid grid-cols-2 gap-3">
+          <button
+            onClick={() => setMode('modrinth-pack')}
+            className="card p-4 text-left group hover:border-emerald-500/40 transition-all duration-200"
+          >
+            <div className="p-2 rounded-md bg-emerald-500/10 text-emerald-400 group-hover:bg-emerald-500/20 transition-colors duration-200 w-fit mb-3">
+              <Search size={17} />
+            </div>
+            <div className="font-semibold text-sm text-gray-200 group-hover:text-emerald-400 transition-colors duration-200 mb-1">Modrinth</div>
+            <div className="text-xs text-mc-muted leading-relaxed">Browse thousands of modpacks — no file download needed.</div>
+          </button>
+
+          <button
+            onClick={() => cfEnabled ? setMode('cf-pack') : undefined}
+            disabled={!cfEnabled}
+            className={`card p-4 text-left group transition-all duration-200 ${cfEnabled ? 'hover:border-orange-500/40 cursor-pointer' : 'opacity-40 cursor-not-allowed'}`}
+          >
+            <div className={`p-2 rounded-md bg-orange-500/10 text-orange-400 w-fit mb-3 transition-colors duration-200 ${cfEnabled ? 'group-hover:bg-orange-500/20' : ''}`}>
+              {cfEnabled ? <Search size={17} /> : <Lock size={17} />}
+            </div>
+            <div className="flex items-center gap-1.5 mb-1">
+              <span className={`font-semibold text-sm text-gray-200 transition-colors duration-200 ${cfEnabled ? 'group-hover:text-orange-400' : ''}`}>CurseForge</span>
+              {!cfEnabled && <span className="text-xs text-mc-muted font-mono border border-mc-border rounded px-1 leading-none py-px">locked</span>}
+            </div>
+            <div className="text-xs text-mc-muted leading-relaxed">
+              {cfEnabled ? 'ATM, FTB, RLCraft and thousands more.' : 'Add data/curseforge.key to unlock.'}
+            </div>
+          </button>
+        </div>
+      </div>
+
+      {/* Import */}
+      <div className="mb-6">
+        <div className="flex items-center gap-3 mb-3">
+          <span className="text-xs font-mono tracking-widest uppercase text-mc-muted">Import</span>
+          <div className="flex-1 h-px bg-mc-border" />
+        </div>
+        <div className="grid grid-cols-2 gap-3 mb-3">
+          <button
+            onClick={() => setMode('prism')}
+            className="card p-4 text-left group hover:border-blue-400/40 transition-all duration-200"
+          >
+            <div className="p-2 rounded-md bg-blue-500/10 text-blue-400 group-hover:bg-blue-500/20 transition-colors duration-200 w-fit mb-3">
+              <Upload size={17} />
+            </div>
+            <div className="font-semibold text-sm text-gray-200 group-hover:text-blue-400 transition-colors duration-200 mb-1">Prism Launcher</div>
+            <div className="text-xs text-mc-muted leading-relaxed">Upload a Prism export .zip — version and mods auto-detected.</div>
+          </button>
+
+          <button
+            onClick={() => setMode('mrpack')}
+            className="card p-4 text-left group hover:border-blue-400/40 transition-all duration-200"
+          >
+            <div className="p-2 rounded-md bg-blue-500/10 text-blue-400 group-hover:bg-blue-500/20 transition-colors duration-200 w-fit mb-3">
+              <Package size={17} />
+            </div>
+            <div className="font-semibold text-sm text-gray-200 group-hover:text-blue-400 transition-colors duration-200 mb-1">.mrpack File</div>
+            <div className="text-xs text-mc-muted leading-relaxed">Upload a Modrinth modpack file directly.</div>
+          </button>
+        </div>
 
         <button
           onClick={() => setMode('backup')}
-          className="card p-5 text-left hover:border-mc-green/60 transition-colors group flex items-start gap-4"
+          className="w-full card p-4 text-left group hover:border-slate-500/40 transition-all duration-200 flex items-center gap-4"
         >
-          <div className="p-2.5 rounded-lg bg-mc-green/10 text-mc-green group-hover:bg-mc-green/20 transition-colors flex-shrink-0">
-            <Archive size={22} />
+          <div className="p-2 rounded-md bg-slate-500/10 text-slate-400 group-hover:bg-slate-500/20 transition-colors duration-200 flex-shrink-0">
+            <Archive size={17} />
           </div>
-          <div>
-            <div className="font-semibold text-gray-100 group-hover:text-mc-green transition-colors">Import from Backup</div>
-            <div className="text-sm text-mc-muted mt-0.5">Restore a full .tar.gz backup as a new server.</div>
+          <div className="flex-1 min-w-0">
+            <div className="font-semibold text-sm text-gray-200 group-hover:text-slate-300 transition-colors duration-200">Restore from Backup</div>
+            <div className="text-xs text-mc-muted mt-0.5">Restore a full .tar.gz backup as a new server.</div>
           </div>
+          <ChevronRight size={16} className="text-mc-muted group-hover:text-slate-400 group-hover:translate-x-0.5 transition-all duration-200 flex-shrink-0" />
         </button>
       </div>
 
-      <button onClick={() => navigate('/')} className="btn-ghost mt-6">Cancel</button>
+      <button onClick={() => navigate('/')} className="btn-ghost text-xs">Cancel</button>
     </div>
   );
 }
