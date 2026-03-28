@@ -193,6 +193,16 @@ function suggestMemoryMb(modCount: number): number {
   return 8192;
 }
 
+// MC version → minimum Java version required
+export function javaForMcVersion(mcVersion: string): string {
+  const [, minor, patch] = mcVersion.split('.').map(Number);
+  if (minor >= 21) return '21';
+  if (minor === 20 && (patch ?? 0) >= 5) return '21';
+  if (minor >= 18) return '17';
+  if (minor === 17) return '17';
+  return '8';
+}
+
 router.get('/modpacks/estimate-memory', async (req: Request, res: Response, next: NextFunction) => {
   try {
     const url = (req.query.url as string) ?? '';
@@ -207,10 +217,15 @@ router.get('/modpacks/estimate-memory', async (req: Request, res: Response, next
       fs.writeFileSync(tmpPath, Buffer.from(await resp.arrayBuffer()));
 
       const raw = await readZipEntry(tmpPath, 'modrinth.index.json');
-      const index = JSON.parse(raw.toString('utf8')) as { files?: { env?: { server?: string } }[] };
+      const index = JSON.parse(raw.toString('utf8')) as {
+        files?: { env?: { server?: string } }[];
+        dependencies?: Record<string, string>;
+      };
       const modCount = (index.files ?? []).filter(f => f.env?.server !== 'unsupported').length;
+      const mcVersion = index.dependencies?.minecraft ?? '';
+      const suggestedJavaVersion = mcVersion ? javaForMcVersion(mcVersion) : '21';
 
-      res.json({ success: true, data: { modCount, suggestedMemoryMb: suggestMemoryMb(modCount) } });
+      res.json({ success: true, data: { modCount, suggestedMemoryMb: suggestMemoryMb(modCount), mcVersion, suggestedJavaVersion } });
     } finally {
       if (fs.existsSync(tmpPath)) fs.unlinkSync(tmpPath);
     }

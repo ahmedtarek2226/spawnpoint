@@ -531,7 +531,7 @@ function ModrinthPackForm({ onBack, onDone }: { onBack: () => void; onDone: (id:
 
   const totalPages = Math.ceil(total / PACK_PAGE_SIZE);
 
-  // Auto-estimate memory when a version is selected
+  // Auto-estimate memory and Java when a version is selected
   useEffect(() => {
     if (!selectedVersionId || !versions.length) return;
     const ver = versions.find(v => v.id === selectedVersionId);
@@ -541,12 +541,13 @@ function ModrinthPackForm({ onBack, onDone }: { onBack: () => void; onDone: (id:
 
     let cancelled = false;
     setMemoryHint('Estimating…');
-    api.get<{ modCount: number; suggestedMemoryMb: number }>(
+    api.get<{ modCount: number; suggestedMemoryMb: number; suggestedJavaVersion: string }>(
       `/prism/modpacks/estimate-memory?url=${encodeURIComponent(file.url)}`
     ).then(data => {
       if (cancelled) return;
       setMemoryMb(data.suggestedMemoryMb);
-      setMemoryHint(`${data.modCount} mods detected → ${data.suggestedMemoryMb} MB suggested`);
+      setJavaVersion(data.suggestedJavaVersion);
+      setMemoryHint(`${data.modCount} mods detected → ${data.suggestedMemoryMb} MB, Java ${data.suggestedJavaVersion}`);
     }).catch(() => {
       if (!cancelled) setMemoryHint('');
     });
@@ -853,17 +854,18 @@ function CurseForgePackForm({ onBack, onDone }: { onBack: () => void; onDone: (i
 
   const totalPages = Math.ceil(total / CF_PACK_PAGE_SIZE);
 
-  // Auto-estimate memory when a file version is selected
+  // Auto-estimate memory and Java when a file version is selected
   useEffect(() => {
     if (!selectedFileId || !selectedPack) return;
     let cancelled = false;
     setMemoryHint('Estimating…');
-    api.get<{ modCount: number; suggestedMemoryMb: number }>(
+    api.get<{ modCount: number; suggestedMemoryMb: number; suggestedJavaVersion: string }>(
       `/curseforge/modpacks/${selectedPack.id}/files/${selectedFileId}/estimate-memory`
     ).then(data => {
       if (cancelled) return;
       setMemoryMb(data.suggestedMemoryMb);
-      setMemoryHint(`${data.modCount} mods detected → ${data.suggestedMemoryMb} MB suggested`);
+      setJavaVersion(data.suggestedJavaVersion);
+      setMemoryHint(`${data.modCount} mods detected → ${data.suggestedMemoryMb} MB, Java ${data.suggestedJavaVersion}`);
     }).catch(() => {
       if (!cancelled) setMemoryHint('');
     });

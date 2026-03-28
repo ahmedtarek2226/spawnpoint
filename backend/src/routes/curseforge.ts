@@ -5,6 +5,7 @@ import os from 'os';
 import yauzl from 'yauzl';
 import { nanoid } from 'nanoid';
 import { getServer } from '../models/Server';
+import { javaForMcVersion } from './prism';
 import { SERVERS_DIR } from '../config';
 import {
   cfEnabled, cfGet, cfPost, cfFingerprint,
@@ -82,7 +83,7 @@ globalRouter.get('/modpacks/:projectId/files/:fileId/estimate-memory', async (re
     const fileResp = await cfGet<{ data: { downloadUrl: string | null } }>(`/mods/${projectId}/files/${fileId}`);
     const { downloadUrl } = fileResp.data;
     if (!downloadUrl) {
-      return res.json({ success: true, data: { modCount: 0, suggestedMemoryMb: 4096 } });
+      return res.json({ success: true, data: { modCount: 0, suggestedMemoryMb: 4096, suggestedJavaVersion: '21' } });
     }
 
     const tmpPath = path.join(os.tmpdir(), `cf-est-${nanoid(8)}.zip`);
@@ -92,10 +93,15 @@ globalRouter.get('/modpacks/:projectId/files/:fileId/estimate-memory', async (re
       fs.writeFileSync(tmpPath, Buffer.from(await resp.arrayBuffer()));
 
       const raw = await readCfZipEntry(tmpPath, 'manifest.json');
-      const manifest = JSON.parse(raw.toString('utf8')) as { files?: unknown[] };
+      const manifest = JSON.parse(raw.toString('utf8')) as {
+        files?: unknown[];
+        minecraft?: { version?: string };
+      };
       const modCount = (manifest.files ?? []).length;
+      const mcVersion = manifest.minecraft?.version ?? '';
+      const suggestedJavaVersion = mcVersion ? javaForMcVersion(mcVersion) : '21';
 
-      res.json({ success: true, data: { modCount, suggestedMemoryMb: suggestMemoryMb(modCount) } });
+      res.json({ success: true, data: { modCount, suggestedMemoryMb: suggestMemoryMb(modCount), mcVersion, suggestedJavaVersion } });
     } finally {
       if (fs.existsSync(tmpPath)) fs.unlinkSync(tmpPath);
     }
