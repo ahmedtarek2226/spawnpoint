@@ -25,6 +25,8 @@ import importBackupRouter from './routes/importBackup';
 import messagesRouter from './routes/messages';
 import schedulesRouter from './routes/schedules';
 import modrinthRouter from './routes/modrinth';
+import curseforgeServerRouter, { globalRouter as curseforgeGlobalRouter } from './routes/curseforge';
+import { CURSEFORGE_API_KEY } from './config';
 
 async function main(): Promise<void> {
   if (!path.isAbsolute(HOST_DATA_DIR)) {
@@ -70,6 +72,8 @@ async function main(): Promise<void> {
   app.use('/api/servers/:id/messages', messagesRouter);
   app.use('/api/servers/:id/schedules', schedulesRouter);
   app.use('/api/servers/:id/modrinth', modrinthRouter);
+  app.use('/api/servers/:id/curseforge', curseforgeServerRouter);
+  app.use('/api/curseforge', curseforgeGlobalRouter);
 
   // Serve frontend (no auth — the SPA handles the login UI)
   if (fs.existsSync(PUBLIC_DIR)) {
@@ -88,6 +92,12 @@ async function main(): Promise<void> {
   initMessageScheduler(sendCommand);
   startServerScheduler();
   startBackupScheduler();
+
+  if (CURSEFORGE_API_KEY) {
+    console.log('[curseforge] API key loaded — CurseForge mod browser and modpack installer are enabled.');
+  } else {
+    console.log('[curseforge] No API key found. To unlock CurseForge features, create data/curseforge.key containing your API key (get one free at https://console.curseforge.com/)');
+  }
 
   const dockerAvailable = await checkDockerAvailable();
   if (!dockerAvailable) {

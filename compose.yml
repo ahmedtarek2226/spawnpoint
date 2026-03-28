@@ -11,11 +11,17 @@ services:
       # The backend auto-detects the host-side path from /proc/self/mountinfo,
       # so no extra env var is needed for most setups.
       - ${HOST_DATA_DIR:-./data}:/app/data
+    # env_file reads values literally — preserves $ characters in API keys
+    env_file:
+      - path: .env
+        required: false
     environment:
       - DATA_DIR=/app/data
       - PORT=3000
       - DASHBOARD_USER=${DASHBOARD_USER:-}
       - DASHBOARD_PASSWORD=${DASHBOARD_PASSWORD:-}
       - CORS_ORIGIN=${CORS_ORIGIN:-}
+      # CURSEFORGE_API_KEY is intentionally omitted here — loaded via env_file
+      # above so that $ characters in the key are not interpolated by Compose.
       # Optional: override host path detection (only needed on Docker Desktop/macOS/Windows)
       # - HOST_DATA_DIR=/absolute/host/path/to/data

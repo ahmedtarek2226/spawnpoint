@@ -72,3 +72,16 @@ export const DASHBOARD_PASSWORD = process.env.DASHBOARD_PASSWORD ?? '';
 export const CORS_ORIGIN = process.env.CORS_ORIGIN ?? '';
 
 export const APP_VERSION = process.env.BUILD_VERSION ?? 'dev';
+
+// CurseForge API keys contain $ characters which Docker Compose interpolates,
+// corrupting the key. Read from a file first to avoid this entirely.
+function loadCurseForgeKey(): string {
+  const keyFile = path.join(DATA_DIR, 'curseforge.key');
+  try {
+    const raw = fs.readFileSync(keyFile, 'utf8').trim();
+    if (raw) return raw;
+  } catch { /* file doesn't exist */ }
+  return process.env.CURSEFORGE_API_KEY ?? '';
+}
+
+export const CURSEFORGE_API_KEY = loadCurseForgeKey();

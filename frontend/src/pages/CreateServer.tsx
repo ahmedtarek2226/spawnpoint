@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Server, Upload, Archive, ChevronLeft, Package, Search, Download, ExternalLink, ChevronRight, Loader2 } from 'lucide-react';
+import { Server, Upload, Archive, ChevronLeft, Package, Search, Download, ExternalLink, ChevronRight, Loader2, Lock } from 'lucide-react';
 import { api, uploadPrismExport } from '../api/client';
 import { useServersStore } from '../stores/serversStore';
 import type { Server as ServerType } from '../stores/serversStore';
@@ -25,7 +25,7 @@ const TYPE_LABELS: Record<string, string> = {
 };
 const POPULAR_VERSIONS = ['1.21.4', '1.21.3', '1.21.1', '1.20.6', '1.20.4', '1.20.1', '1.19.4', '1.18.2', '1.16.5', '1.12.2', '1.8.9'];
 
-type Mode = 'pick' | 'new' | 'prism' | 'mrpack' | 'modrinth-pack' | 'backup';
+type Mode = 'pick' | 'new' | 'prism' | 'mrpack' | 'modrinth-pack' | 'cf-pack' | 'backup';
 
 // ── root component ───────────────────────────────────────────────────────────
 
@@ -33,6 +33,13 @@ export default function CreateServer() {
   const navigate = useNavigate();
   const setServers = useServersStore((s) => s.setServers);
   const [mode, setMode] = useState<Mode>('pick');
+  const [cfEnabled, setCfEnabled] = useState(false);
+
+  useEffect(() => {
+    api.get<{ enabled: boolean }>('/curseforge/status')
+      .then((d) => setCfEnabled(d.enabled))
+      .catch(() => {});
+  }, []);
 
   async function refresh() {
     const servers = await api.get<ServerType[]>('/servers');
@@ -43,6 +50,7 @@ export default function CreateServer() {
   if (mode === 'prism')         return <PrismForm         onBack={() => setMode('pick')} onDone={async (id) => { await refresh(); navigate(`/servers/${id}`); }} />;
   if (mode === 'mrpack')        return <MrpackForm        onBack={() => setMode('pick')} onDone={async (id) => { await refresh(); navigate(`/servers/${id}`); }} />;
   if (mode === 'modrinth-pack') return <ModrinthPackForm  onBack={() => setMode('pick')} onDone={async (id) => { await refresh(); navigate(`/servers/${id}`); }} />;
+  if (mode === 'cf-pack')       return <CurseForgePackForm onBack={() => setMode('pick')} onDone={async (id) => { await refresh(); navigate(`/servers/${id}`); }} />;
   if (mode === 'backup')        return <BackupForm        onBack={() => setMode('pick')} onDone={async (id) => { await refresh(); navigate(`/servers/${id}`); }} />;
 
   return (
@@ -100,6 +108,26 @@ export default function CreateServer() {
           <div>
             <div className="font-semibold text-gray-100 group-hover:text-mc-green transition-colors">Import Modrinth Pack (.mrpack)</div>
             <div className="text-sm text-mc-muted mt-0.5">Upload a .mrpack file — server-compatible mods downloaded automatically.</div>
+          </div>
+        </button>
+
+        <button
+          onClick={() => cfEnabled && setMode('cf-pack')}
+          disabled={!cfEnabled}
+          title={!cfEnabled ? 'Set CURSEFORGE_API_KEY in your environment to unlock' : undefined}
+          className={`card p-5 text-left transition-colors group flex items-start gap-4 ${cfEnabled ? 'hover:border-mc-green/60 cursor-pointer' : 'opacity-50 cursor-not-allowed'}`}
+        >
+          <div className={`p-2.5 rounded-lg bg-mc-green/10 text-mc-green flex-shrink-0 ${cfEnabled ? 'group-hover:bg-mc-green/20' : ''} transition-colors`}>
+            <Search size={22} />
+          </div>
+          <div className="flex-1">
+            <div className="flex items-center gap-2">
+              <div className={`font-semibold text-gray-100 ${cfEnabled ? 'group-hover:text-mc-green' : ''} transition-colors`}>Browse CurseForge Modpacks</div>
+              {!cfEnabled && <Lock size={13} className="text-mc-muted" />}
+            </div>
+            <div className="text-sm text-mc-muted mt-0.5">
+              {cfEnabled ? 'Search and install from CurseForge — covers ATM, FTB, RLCraft and more.' : 'Set CURSEFORGE_API_KEY to unlock. Get a free key at console.curseforge.com'}
+            </div>
           </div>
         </button>
 
@@ -740,6 +768,282 @@ function ModrinthPackForm({ onBack, onDone }: { onBack: () => void; onDone: (id:
                   disabled={page >= totalPages - 1 || searching}
                   onClick={() => search(query, page + 1)}
                 >
+                  <ChevronRight size={14} />
+                </button>
+              </div>
+            )}
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ── curseforge modpack browser form ──────────────────────────────────────────
+
+interface CfPackHit {
+  id: number;
+  name: string;
+  summary: string;
+  downloadCount: number;
+  logo?: { url: string };
+  links?: { websiteUrl: string };
+  latestFilesIndexes: { fileId: number; gameVersion: string; filename: string; releaseType: number }[];
+}
+
+interface CfPackFile {
+  id: number;
+  displayName: string;
+  fileName: string;
+  downloadUrl: string | null;
+  gameVersions: string[];
+  releaseType: number; // 1=release, 2=beta, 3=alpha
+}
+
+const RELEASE_LABEL: Record<number, string> = { 1: 'Release', 2: 'Beta', 3: 'Alpha' };
+
+const CF_PACK_PAGE_SIZE = 20;
+
+function CurseForgePackForm({ onBack, onDone }: { onBack: () => void; onDone: (id: string) => void }) {
+  const [step, setStep] = useState<'search' | 'configure'>('search');
+
+  const [query, setQuery] = useState('');
+  const [hits, setHits] = useState<CfPackHit[]>([]);
+  const [total, setTotal] = useState(0);
+  const [page, setPage] = useState(0);
+  const [searching, setSearching] = useState(false);
+  const [searchError, setSearchError] = useState('');
+
+  const [selectedPack, setSelectedPack] = useState<CfPackHit | null>(null);
+  const [files, setFiles] = useState<CfPackFile[]>([]);
+  const [filesLoading, setFilesLoading] = useState(false);
+  const [selectedFileId, setSelectedFileId] = useState<number | null>(null);
+
+  const [name, setName] = useState('');
+  const [port, setPort] = useState(25565);
+  const [memoryMb, setMemoryMb] = useState(4096);
+  const [javaVersion, setJavaVersion] = useState('21');
+  const [installing, setInstalling] = useState(false);
+  const [installError, setInstallError] = useState('');
+  const [result, setResult] = useState<{ name: string; version: string; mcVersion: string; serverType: string; loaderVersion?: string; modsDownloaded: number; modsSkipped: number } | null>(null);
+
+  const totalPages = Math.ceil(total / CF_PACK_PAGE_SIZE);
+
+  async function search(q: string, p: number) {
+    setSearching(true);
+    setSearchError('');
+    try {
+      const data = await api.get<{ hits: CfPackHit[]; total: number }>(
+        `/curseforge/modpacks/search?q=${encodeURIComponent(q)}&offset=${p * CF_PACK_PAGE_SIZE}`
+      );
+      setHits(data.hits);
+      setTotal(data.total);
+      setPage(p);
+    } catch (err: unknown) {
+      setSearchError(err instanceof Error ? err.message : 'Search failed');
+    }
+    setSearching(false);
+  }
+
+  useEffect(() => { search('', 0); }, []);
+
+  async function selectPack(hit: CfPackHit) {
+    setSelectedPack(hit);
+    setName(hit.name);
+    setFilesLoading(true);
+    setFiles([]);
+    setSelectedFileId(null);
+    try {
+      const data = await api.get<CfPackFile[]>(`/curseforge/modpacks/versions/${hit.id}`);
+      // Only release files by default, fall back to all
+      const releases = data.filter(f => f.releaseType === 1);
+      const list = releases.length ? releases : data;
+      setFiles(list);
+      if (list.length) setSelectedFileId(list[0].id);
+    } catch { /* ignore */ }
+    setFilesLoading(false);
+    setStep('configure');
+  }
+
+  async function install(e: React.FormEvent) {
+    e.preventDefault();
+    if (!selectedPack || !selectedFileId) return;
+    const file = files.find(f => f.id === selectedFileId);
+    if (!file) return;
+    if (!file.downloadUrl) {
+      setInstallError('This modpack file is not available for direct download. Please download it manually from CurseForge and use the .zip import option.');
+      return;
+    }
+
+    setInstalling(true);
+    setInstallError('');
+    try {
+      const res = await fetch('/api/prism/install-from-curseforge', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ projectId: selectedPack.id, fileId: selectedFileId, name, port, memoryMb, javaVersion }),
+      });
+      const json = await res.json();
+      if (!json.success) throw new Error(json.error?.message ?? 'Install failed');
+      setResult(json.data.importInfo);
+      setTimeout(() => onDone(json.data.server.id), 1500);
+    } catch (err: unknown) {
+      setInstallError(err instanceof Error ? err.message : 'Install failed');
+      setInstalling(false);
+    }
+  }
+
+  if (step === 'configure' && selectedPack) {
+    return (
+      <div className="p-6 max-w-2xl">
+        <button onClick={() => setStep('search')} className="flex items-center gap-1.5 text-sm text-mc-muted hover:text-gray-200 mb-6 transition-colors">
+          <ChevronLeft size={16} /> Back to search
+        </button>
+        <h1 className="text-2xl font-bold mb-1">Configure Server</h1>
+        <p className="text-mc-muted text-sm mb-6">Installing from CurseForge modpack</p>
+
+        <div className="card p-4 flex items-start gap-3 mb-6">
+          {selectedPack.logo?.url ? (
+            <img src={selectedPack.logo.url} alt="" className="w-12 h-12 rounded flex-shrink-0 object-cover" />
+          ) : (
+            <div className="w-12 h-12 rounded bg-mc-dark flex items-center justify-center flex-shrink-0">
+              <Package size={20} className="text-mc-muted" />
+            </div>
+          )}
+          <div className="flex-1 min-w-0">
+            <div className="font-medium text-gray-200">{selectedPack.name}</div>
+            <p className="text-xs text-mc-muted mt-0.5 line-clamp-2">{selectedPack.summary}</p>
+          </div>
+          {selectedPack.links?.websiteUrl && (
+            <a href={selectedPack.links.websiteUrl} target="_blank" rel="noreferrer" className="btn-ghost p-1.5 flex-shrink-0" title="View on CurseForge">
+              <ExternalLink size={13} />
+            </a>
+          )}
+        </div>
+
+        <form onSubmit={install} className="space-y-5">
+          <div>
+            <label className="label">Version</label>
+            {filesLoading ? (
+              <div className="flex items-center gap-2 text-mc-muted text-sm"><Loader2 size={14} className="animate-spin" /> Loading versions…</div>
+            ) : (
+              <select className="input" value={selectedFileId ?? ''} onChange={e => setSelectedFileId(Number(e.target.value))}>
+                {files.map(f => (
+                  <option key={f.id} value={f.id}>
+                    {f.displayName} — {RELEASE_LABEL[f.releaseType] ?? 'Unknown'} — {f.gameVersions.slice(0, 3).join(', ')}{f.gameVersions.length > 3 ? '…' : ''}
+                    {!f.downloadUrl ? ' (no direct download)' : ''}
+                  </option>
+                ))}
+              </select>
+            )}
+          </div>
+
+          <div>
+            <label className="label">Server Name</label>
+            <input className="input" value={name} onChange={e => setName(e.target.value)} required />
+          </div>
+
+          <div className="grid grid-cols-3 gap-4">
+            <div>
+              <label className="label">Port</label>
+              <input className="input" type="number" min={1} max={65535} value={port} onChange={e => setPort(parseInt(e.target.value))} />
+            </div>
+            <div>
+              <label className="label">Memory (MB)</label>
+              <input className="input" type="number" min={512} step={512} value={memoryMb} onChange={e => setMemoryMb(parseInt(e.target.value))} />
+              <p className="text-xs text-mc-muted mt-1">4096 MB recommended for modpacks</p>
+            </div>
+            <div>
+              <label className="label">Java Version</label>
+              <select className="input" value={javaVersion} onChange={e => setJavaVersion(e.target.value)}>
+                {JAVA_VERSIONS.map(j => <option key={j.value} value={j.value}>{j.label}</option>)}
+              </select>
+            </div>
+          </div>
+
+          {result && (
+            <div className="bg-mc-green/10 border border-mc-green/40 rounded p-4 text-sm">
+              <div className="font-medium text-mc-green">Install successful! Redirecting…</div>
+              <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-xs mt-2">
+                <span className="text-mc-muted">Pack</span><span className="text-white">{result.name} {result.version}</span>
+                <span className="text-mc-muted">MC Version</span><span className="text-white">{result.mcVersion}</span>
+                <span className="text-mc-muted">Type</span><span className="text-white capitalize">{result.serverType}{result.loaderVersion ? ` ${result.loaderVersion}` : ''}</span>
+                <span className="text-mc-muted">Mods downloaded</span><span className="text-white">{result.modsDownloaded}</span>
+                <span className="text-mc-muted">Skipped (no direct DL)</span><span className="text-white">{result.modsSkipped}</span>
+              </div>
+            </div>
+          )}
+
+          {installError && <div className="bg-red-900/30 border border-red-700 text-red-400 rounded px-3 py-2 text-sm">{installError}</div>}
+
+          <button type="submit" className="btn-primary w-full" disabled={installing || filesLoading || !selectedFileId}>
+            {installing
+              ? <><Loader2 size={14} className="animate-spin" /> Installing modpack…</>
+              : <><Download size={14} /> Create Server</>}
+          </button>
+        </form>
+      </div>
+    );
+  }
+
+  return (
+    <div className="p-6 max-w-2xl h-full flex flex-col">
+      <BackButton onClick={onBack} />
+      <h1 className="text-2xl font-bold mb-1">Browse CurseForge Modpacks</h1>
+      <p className="text-mc-muted text-sm mb-4">ATM, FTB, RLCraft, Vault Hunters, SkyFactory and more. Server-side mods are downloaded automatically.</p>
+
+      <form onSubmit={(e) => { e.preventDefault(); search(query, 0); }} className="flex gap-2 mb-4">
+        <div className="relative flex-1">
+          <Search size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-mc-muted pointer-events-none" />
+          <input className="input pl-8 w-full" placeholder="Search modpacks…" value={query} onChange={e => setQuery(e.target.value)} />
+        </div>
+        <button type="submit" className="btn-primary text-sm" disabled={searching}>
+          {searching ? <Loader2 size={13} className="animate-spin" /> : <Search size={13} />} Search
+        </button>
+      </form>
+
+      {searchError && <div className="bg-red-900/30 border border-red-700 text-red-400 rounded px-3 py-2 text-sm mb-3">{searchError}</div>}
+
+      <div className="flex-1 overflow-y-auto space-y-2 min-h-0">
+        {searching && !hits.length ? (
+          <div className="text-center py-12 text-mc-muted text-sm">
+            <Loader2 size={24} className="animate-spin mx-auto mb-2" /> Searching…
+          </div>
+        ) : hits.length === 0 ? (
+          <div className="card p-8 text-center text-mc-muted text-sm">No modpacks found</div>
+        ) : (
+          <>
+            {total > 0 && <div className="text-xs text-mc-muted">{total.toLocaleString()} modpacks found</div>}
+            {hits.map((hit) => (
+              <button
+                key={hit.id}
+                onClick={() => selectPack(hit)}
+                className="card p-4 flex items-start gap-3 w-full text-left hover:border-mc-green/50 transition-colors group"
+              >
+                {hit.logo?.url ? (
+                  <img src={hit.logo.url} alt="" className="w-10 h-10 rounded flex-shrink-0 object-cover" />
+                ) : (
+                  <div className="w-10 h-10 rounded bg-mc-dark flex items-center justify-center flex-shrink-0">
+                    <Package size={18} className="text-mc-muted" />
+                  </div>
+                )}
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2">
+                    <span className="font-medium text-gray-200 group-hover:text-mc-green transition-colors">{hit.name}</span>
+                    <span className="text-xs text-mc-muted flex items-center gap-1"><Download size={10} /> {fmtDownloads(hit.downloadCount)}</span>
+                  </div>
+                  <p className="text-xs text-mc-muted mt-0.5 line-clamp-2">{hit.summary}</p>
+                </div>
+                <ChevronRight size={16} className="text-mc-muted group-hover:text-mc-green transition-colors flex-shrink-0 mt-1" />
+              </button>
+            ))}
+            {totalPages > 1 && (
+              <div className="flex items-center justify-center gap-2 pt-2">
+                <button className="btn-ghost p-1.5" disabled={page === 0 || searching} onClick={() => search(query, page - 1)}>
+                  <ChevronLeft size={14} />
+                </button>
+                <span className="text-xs text-mc-muted">Page {page + 1} of {totalPages}</span>
+                <button className="btn-ghost p-1.5" disabled={page >= totalPages - 1 || searching} onClick={() => search(query, page + 1)}>
                   <ChevronRight size={14} />
                 </button>
               </div>

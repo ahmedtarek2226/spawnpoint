@@ -6,6 +6,8 @@ import os from 'os';
 import { nanoid } from 'nanoid';
 import { importPrismExport } from '../services/PrismImporter';
 import { importMrpack } from '../services/MrpackImporter';
+import { importCurseForgeModpack } from '../services/CurseForgeModpackImporter';
+import { cfEnabled, cfGet } from '../services/CurseForgeClient';
 import { createServer } from '../models/Server';
 import { SERVERS_DIR } from '../config';
 import { getHostDataDir } from '../services/hostDataDir';
@@ -209,6 +211,72 @@ router.post('/install-from-url', async (req: Request, res: Response, next: NextF
         importInfo: {
           name: result.name,
           versionId: result.versionId,
+          mcVersion: result.mcVersion,
+          serverType: result.serverType,
+          loaderVersion: result.loaderVersion,
+          modsDownloaded: result.modsDownloaded,
+          modsSkipped: result.modsSkipped,
+        },
+      },
+    });
+  } catch (err) { next(err); }
+});
+
+// Install a CurseForge modpack by project + file ID (no file upload)
+router.post('/install-from-curseforge', async (req: Request, res: Response, next: NextFunction) => {
+  if (!cfEnabled()) return next(Object.assign(new Error('CurseForge API key not configured'), { status: 503 }));
+  try {
+    const { projectId, fileId, name, port, memoryMb, javaVersion } = req.body as {
+      projectId: number; fileId: number; name?: string; port?: number; memoryMb?: number; javaVersion?: string;
+    };
+    if (!projectId || !fileId) return next(Object.assign(new Error('projectId and fileId are required'), { status: 400 }));
+
+    // Resolve the download URL for this file
+    const fileResp = await cfGet<{ data: { downloadUrl: string | null; fileName: string } }>(
+      `/mods/${projectId}/files/${fileId}`
+    );
+    const { downloadUrl, fileName } = fileResp.data;
+    if (!downloadUrl) return next(Object.assign(new Error('This modpack file is not available for direct download. Please download manually from CurseForge.'), { status: 422 }));
+
+    // Download the .zip to a temp file
+    const tmpPath = path.join(os.tmpdir(), `cf-modpack-${nanoid(10)}.zip`);
+    const dlResp = await fetch(downloadUrl, { headers: { 'User-Agent': 'Spawnpoint/1.0' } });
+    if (!dlResp.ok) throw new Error(`Download failed: ${dlResp.status}`);
+    fs.writeFileSync(tmpPath, Buffer.from(await dlResp.arrayBuffer()));
+
+    const id = nanoid(10);
+    const serverLocalDir = path.join(SERVERS_DIR, id);
+    const hostDirectory = path.join(await getHostDataDir(), 'servers', id);
+    fs.mkdirSync(serverLocalDir, { recursive: true });
+
+    let result;
+    try {
+      result = await importCurseForgeModpack(tmpPath, serverLocalDir);
+    } finally {
+      fs.unlinkSync(tmpPath);
+    }
+
+    const serverName = name || result.name;
+    const server = createServer({
+      id,
+      name: serverName,
+      type: result.serverType,
+      mcVersion: result.mcVersion,
+      port: port ?? 25565,
+      memoryMb: memoryMb ?? 4096,
+      jvmFlags: '-XX:+UseG1GC -XX:+ParallelRefProcEnabled -XX:MaxGCPauseMillis=200',
+      javaVersion: javaVersion ?? '21',
+      rconPassword: nanoid(24),
+      hostDirectory,
+    });
+
+    res.status(201).json({
+      success: true,
+      data: {
+        server,
+        importInfo: {
+          name: result.name,
+          version: result.version,
           mcVersion: result.mcVersion,
           serverType: result.serverType,
           loaderVersion: result.loaderVersion,
