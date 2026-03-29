@@ -36,4 +36,9 @@ export function initDb(): void {
   try { db.exec("ALTER TABLE servers ADD COLUMN modpack_project_id TEXT"); } catch { /* already exists */ }
   try { db.exec("ALTER TABLE servers ADD COLUMN modpack_version_id TEXT"); } catch { /* already exists */ }
   try { db.exec("ALTER TABLE servers ADD COLUMN modpack_slug TEXT"); } catch { /* already exists */ }
+
+  db.exec(`CREATE TABLE IF NOT EXISTS settings (
+    key   TEXT PRIMARY KEY,
+    value TEXT NOT NULL
+  )`);
 }

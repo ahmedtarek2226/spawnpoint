@@ -1,24 +1,28 @@
-import { CURSEFORGE_API_KEY } from '../config';
+import { getSetting } from '../models/Setting';
 
 const BASE = 'https://api.curseforge.com/v1';
 const UA = { 'User-Agent': 'Spawnpoint/1.0 (self-hosted MC manager)' };
 
+export function cfApiKey(): string {
+  return getSetting('curseforge_api_key') ?? '';
+}
+
 export function cfEnabled(): boolean {
-  return !!CURSEFORGE_API_KEY;
+  return !!cfApiKey();
 }
 
 async function cfFetch(path: string, init: RequestInit = {}): Promise<unknown> {
   const resp = await fetch(`${BASE}${path}`, {
     ...init,
     headers: {
-      'x-api-key': CURSEFORGE_API_KEY,
+      'x-api-key': cfApiKey(),
       'Content-Type': 'application/json',
       ...UA,
       ...(init.headers ?? {}),
     },
   });
   if (resp.status === 403) {
-    throw new Error('CurseForge API key rejected (403). Check that CURSEFORGE_API_KEY is set correctly in your .env file.');
+    throw new Error('CurseForge API key invalid (403). Check the key in Settings.');
   }
   if (!resp.ok) throw new Error(`CurseForge API error: ${resp.status}`);
   return resp.json();

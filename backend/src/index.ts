@@ -29,8 +29,8 @@ import curseforgeServerRouter, { globalRouter as curseforgeGlobalRouter } from '
 import imageProxyRouter from './routes/imageProxy';
 import modpackUpdateRouter from './routes/modpackUpdate';
 import jobsRouter from './routes/jobs';
+import settingsRouter from './routes/settings';
 import { resetStaleJobs } from './models/Job';
-import { CURSEFORGE_API_KEY } from './config';
 
 async function main(): Promise<void> {
   if (!path.isAbsolute(HOST_DATA_DIR)) {
@@ -86,6 +86,7 @@ async function main(): Promise<void> {
   app.use('/api/curseforge', curseforgeGlobalRouter);
   app.use('/api/servers/:id/modpack', modpackUpdateRouter);
   app.use('/api/jobs', jobsRouter);
+  app.use('/api/settings', settingsRouter);
 
   // Serve frontend (no auth — the SPA handles the login UI)
   if (fs.existsSync(PUBLIC_DIR)) {
@@ -104,12 +105,6 @@ async function main(): Promise<void> {
   initMessageScheduler(sendCommand);
   startServerScheduler();
   startBackupScheduler();
-
-  if (CURSEFORGE_API_KEY) {
-    console.log('[curseforge] API key loaded — CurseForge mod browser and modpack installer are enabled.');
-  } else {
-    console.log('[curseforge] No API key found. To unlock CurseForge features, set CURSEFORGE_API_KEY in your .env file (get one free at https://console.curseforge.com/)');
-  }
 
   const dockerAvailable = await checkDockerAvailable();
   if (!dockerAvailable) {

@@ -74,8 +74,3 @@ export const CORS_ORIGIN = process.env.CORS_ORIGIN ?? '';
 
 export const APP_VERSION = process.env.BUILD_VERSION ?? '';
 
-// Normalize the key: strip surrounding quotes and unescape $$ → $
-// so the key works whether loaded via env_file: (literal) or environment: ($$-escaped).
-export const CURSEFORGE_API_KEY = (process.env.CURSEFORGE_API_KEY ?? '')
-  .replace(/^["']|["']$/g, '')
-  .replace(/\$\$/g, '$');

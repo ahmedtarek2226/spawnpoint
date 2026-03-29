@@ -1,6 +1,6 @@
 import { NavLink, useNavigate } from 'react-router-dom';
 import { useState, useEffect } from 'react';
-import { Plus, LayoutDashboard, X, LogOut, Search, Github, Bell } from 'lucide-react';
+import { Plus, LayoutDashboard, X, LogOut, Search, Github, Bell, Settings } from 'lucide-react';
 import { useServersStore } from '../../stores/serversStore';
 import { useJobStore } from '../../stores/jobStore';
 import StatusBadge from '../StatusBadge';
@@ -182,6 +182,18 @@ export default function Sidebar({ onClose }: { onClose?: () => void }) {
           </div>
           <span>Notifications</span>
         </button>
+
+        <NavLink
+          to="/settings"
+          className={({ isActive }) =>
+            `w-full flex items-center gap-2 px-3 py-2 rounded text-sm transition-all duration-150 ${
+              isActive ? 'bg-white/8 text-gray-200' : 'text-mc-muted hover:text-gray-200 hover:bg-white/5'
+            }`
+          }
+        >
+          <Settings size={13} className="flex-shrink-0" />
+          <span>Settings</span>
+        </NavLink>
 
         {authRequired && (
           <button

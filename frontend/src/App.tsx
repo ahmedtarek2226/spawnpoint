@@ -9,6 +9,7 @@ const ServerDetail = lazy(() => import('./pages/ServerDetail'));
 const CreateServer = lazy(() => import('./pages/CreateServer'));
 const ImportPrism  = lazy(() => import('./pages/ImportPrism'));
 const ImportBackup = lazy(() => import('./pages/ImportBackup'));
+const AppSettings  = lazy(() => import('./pages/AppSettings'));
 import { initWs, onWsConnect } from './hooks/useServerSocket';
 import { useServersStore } from './stores/serversStore';
 import { useJobStore } from './stores/jobStore';
@@ -89,6 +90,7 @@ export default function App() {
             <Route path="servers/import" element={<ImportPrism />} />
             <Route path="servers/import-backup" element={<ImportBackup />} />
             <Route path="servers/:id/*" element={<ServerDetail />} />
+            <Route path="settings" element={<AppSettings />} />
           </Route>
         </Routes>
       </Suspense>
