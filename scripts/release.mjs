@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * release.mjs — bump version, commit, tag, and push
+ * release.mjs — tag and push a release to trigger the Docker Hub build
  *
  * Usage:
  *   node scripts/release.mjs <version>
@@ -9,14 +9,15 @@
  *   node scripts/release.mjs 0.7.0
  *
  * What it does:
- *   1. Writes BUILD_VERSION=<version> to .env (creates if missing)
- *   2. Commits all staged + the .env change with message "Release vX.Y.Z"
- *   3. Tags the commit vX.Y.Z
- *   4. Pushes branch + tag to origin
+ *   1. Checks the working tree is clean
+ *   2. Tags HEAD as vX.Y.Z
+ *   3. Pushes branch + tag to origin
+ *
+ * The GitHub Actions release workflow triggers on tag push and passes
+ * BUILD_VERSION to Docker Hub automatically via github.ref_name.
  */
 
 import { execSync } from 'child_process';
-import { readFileSync, writeFileSync, existsSync } from 'fs';
 import { join, dirname } from 'path';
 import { fileURLToPath } from 'url';
 
@@ -41,18 +42,18 @@ function run(cmd) {
   return execSync(cmd, { cwd: ROOT, stdio: 'inherit' });
 }
 
-function runCapture(cmd) {
-  return execSync(cmd, { cwd: ROOT }).toString().trim();
+function runCapture(cmd, opts = {}) {
+  return execSync(cmd, { cwd: ROOT, stdio: ['ignore', 'pipe', 'pipe'], ...opts }).toString().trim();
 }
 
-// Check for uncommitted changes (excluding .env which we'll update)
+// Check working tree is clean
 const dirty = runCapture('git status --porcelain')
   .split('\n')
-  .filter(l => l && !l.endsWith('.env'))
+  .filter(l => l.trim())
   .join('\n');
 
 if (dirty) {
-  console.error('Working tree has uncommitted changes (other than .env). Commit or stash first.');
+  console.error('Working tree has uncommitted changes. Commit or stash first.');
   console.error(dirty);
   process.exit(1);
 }
@@ -62,28 +63,13 @@ try {
   runCapture(`git rev-parse ${tag}`);
   console.error(`Tag ${tag} already exists.`);
   process.exit(1);
-} catch { /* tag doesn't exist, continue */ }
+} catch { /* tag doesn't exist — good */ }
 
-// Update BUILD_VERSION in .env
-const envPath = join(ROOT, '.env');
-let envContent = existsSync(envPath) ? readFileSync(envPath, 'utf8') : '';
-
-if (/^BUILD_VERSION=/m.test(envContent)) {
-  envContent = envContent.replace(/^BUILD_VERSION=.*/m, `BUILD_VERSION=${version}`);
-} else {
-  envContent += (envContent.endsWith('\n') || envContent === '' ? '' : '\n') + `BUILD_VERSION=${version}\n`;
-}
-
-writeFileSync(envPath, envContent);
-console.log(`✓ Set BUILD_VERSION=${version} in .env`);
-
-// Commit and tag
-run(`git add .env`);
-run(`git commit -m "Release ${tag}"`);
+// Tag and push
 run(`git tag ${tag}`);
 console.log(`✓ Tagged ${tag}`);
 
-// Push
 run(`git push origin main`);
 run(`git push origin ${tag}`);
-console.log(`\n✓ Released ${tag}`);
+console.log(`\n✓ Released ${tag} — Docker Hub build triggered`);
+console.log(`  Watch: node scripts/build-watch.mjs`);
