@@ -9,9 +9,8 @@
  *   base_url  = http://localhost:3000
  *   server_id = first server returned by /api/servers
  *
- * Prerequisites (one-time):
- *   npm install playwright
- *   npx playwright install chromium
+ * Prerequisites (one-time, from scripts/ directory):
+ *   cd scripts && npm install && npx playwright install chromium
  *
  * Output: screenshots/{dashboard,console,files,new-server,mods}.png
  */
