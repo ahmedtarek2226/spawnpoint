@@ -15,6 +15,9 @@ A self-hosted Minecraft server management dashboard. Run and manage multiple Min
 <!-- File manager showing directory tree and file editor -->
 ![File Manager](screenshots/files.png)
 
+<!-- Mods/Plugins tab with Modrinth browser and missing mod installer -->
+![Mods](screenshots/mods.png)
+
 <!-- New server creation form with type and version selection -->
 ![New Server](screenshots/new-server.png)
 
