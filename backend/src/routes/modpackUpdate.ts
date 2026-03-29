@@ -2,6 +2,7 @@ import { Router, Request, Response, NextFunction } from 'express';
 import { getServer } from '../models/Server';
 import { cfEnabled, cfGet } from '../services/CurseForgeClient';
 import { enqueueUpdateModpack } from '../services/JobRunner';
+import { ApiError } from '../errors';
 
 const router = Router({ mergeParams: true });
 
@@ -9,7 +10,7 @@ const router = Router({ mergeParams: true });
 router.get('/versions', async (req: Request, res: Response, next: NextFunction) => {
   try {
     const server = getServer(req.params.id);
-    if (!server) return next(Object.assign(new Error('Server not found'), { status: 404 }));
+    if (!server) return next(new ApiError('Server not found', 404));
 
     const { modpackSource, modpackProjectId, modpackVersionId, modpackSlug } = server;
     if (!modpackSource || !modpackProjectId) {
@@ -73,16 +74,16 @@ router.get('/versions', async (req: Request, res: Response, next: NextFunction) 
 router.post('/update', (req: Request, res: Response, next: NextFunction) => {
   try {
     const server = getServer(req.params.id);
-    if (!server) return next(Object.assign(new Error('Server not found'), { status: 404 }));
+    if (!server) return next(new ApiError('Server not found', 404));
 
     const { versionId } = req.body as { versionId: string };
-    if (!versionId) return next(Object.assign(new Error('versionId is required'), { status: 400 }));
+    if (!versionId) return next(new ApiError('versionId is required', 400));
 
     if (!server.modpackSource || !server.modpackProjectId) {
-      return next(Object.assign(new Error('This server has no tracked modpack source'), { status: 400 }));
+      return next(new ApiError('This server has no tracked modpack source', 400));
     }
     if (server.modpackSource === 'curseforge' && !cfEnabled()) {
-      return next(Object.assign(new Error('CurseForge API key not configured'), { status: 503 }));
+      return next(new ApiError('CurseForge API key not configured', 503));
     }
 
     const job = enqueueUpdateModpack({ serverId: server.id, versionId });

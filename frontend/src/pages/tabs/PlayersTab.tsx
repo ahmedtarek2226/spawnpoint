@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { Shield, ShieldOff, LogOut, Ban, RotateCw, UserPlus, Users, Crown, History, AlertTriangle } from 'lucide-react';
+import { Shield, ShieldOff, LogOut, Ban, RotateCw, UserPlus, Users, Crown, History, AlertTriangle, X } from 'lucide-react';
 import { api } from '../../api/client';
 
 interface OpsEntry { uuid: string; name: string; level: number; }
@@ -21,6 +21,66 @@ const OP_LEVELS: Record<number, string> = {
   3: 'Kick & ban',
   4: 'Full operator',
 };
+
+function Avatar({ name, size = 28 }: { name: string; size?: number }) {
+  const [err, setErr] = useState(false);
+  if (err) {
+    return (
+      <div
+        className="rounded flex items-center justify-center bg-mc-border text-mc-muted text-[10px] font-bold flex-shrink-0"
+        style={{ width: size, height: size }}
+      >
+        {name[0]?.toUpperCase()}
+      </div>
+    );
+  }
+  return (
+    <img
+      src={`https://mc-heads.net/head/${encodeURIComponent(name)}/${size}`}
+      alt={name}
+      width={size}
+      height={size}
+      className="rounded flex-shrink-0"
+      onError={() => setErr(true)}
+    />
+  );
+}
+
+function BanButton({ name, disabled, onBan }: { name: string; disabled: boolean; onBan: (reason: string) => void }) {
+  const [open, setOpen] = useState(false);
+  const [reason, setReason] = useState('');
+
+  if (!open) {
+    return (
+      <ActionButton icon={Ban} label="Ban" danger disabled={disabled} onClick={() => setOpen(true)} />
+    );
+  }
+
+  return (
+    <div className="flex items-center gap-1">
+      <input
+        autoFocus
+        className="input text-xs py-1 w-36"
+        placeholder="Reason (optional)"
+        value={reason}
+        onChange={e => setReason(e.target.value)}
+        onKeyDown={e => {
+          if (e.key === 'Enter') { onBan(reason); setOpen(false); setReason(''); }
+          if (e.key === 'Escape') { setOpen(false); setReason(''); }
+        }}
+      />
+      <button
+        className="text-xs px-2 py-1 rounded bg-red-900/50 border border-red-700/50 text-red-400 hover:bg-red-900/80 transition-colors"
+        onClick={() => { onBan(reason); setOpen(false); setReason(''); }}
+      >
+        Ban
+      </button>
+      <button className="text-mc-muted hover:text-gray-300 p-1 transition-colors" onClick={() => { setOpen(false); setReason(''); }}>
+        <X size={11} />
+      </button>
+    </div>
+  );
+}
 
 export default function PlayersTab({ serverId, serverStatus }: { serverId: string; serverStatus: string }) {
   const [data, setData] = useState<PlayersData | null>(null);
@@ -142,14 +202,15 @@ export default function PlayersTab({ serverId, serverStatus }: { serverId: strin
                     return (
                       <tr key={name} className="border-b border-mc-border/40 hover:bg-mc-panel/40 transition-colors">
                         <td className="px-4 py-2.5">
-                          <div className="flex items-center gap-2">
-                            <span className="w-1.5 h-1.5 rounded-full bg-mc-green flex-shrink-0" />
+                          <div className="flex items-center gap-2.5">
+                            <Avatar name={name} size={24} />
                             <span className="font-mono text-gray-200">{name}</span>
+                            <span className="w-1.5 h-1.5 rounded-full bg-mc-green flex-shrink-0" />
                             {isOp && <span className="text-xs text-yellow-400 bg-yellow-900/30 border border-yellow-700/30 px-1.5 py-0.5 rounded">OP</span>}
                           </div>
                         </td>
                         <td className="px-4 py-2.5 text-right">
-                          <div className="flex justify-end gap-1">
+                          <div className="flex justify-end gap-1 flex-wrap">
                             {isOp ? (
                               <ActionButton icon={ShieldOff} label="Deop" danger
                                 disabled={!isRunning || busy === `deop:${name}`}
@@ -162,13 +223,8 @@ export default function PlayersTab({ serverId, serverStatus }: { serverId: strin
                             <ActionButton icon={LogOut} label="Kick" danger
                               disabled={!isRunning || busy === `kick:${name}`}
                               onClick={() => doAction('kick', name)} />
-                            <ActionButton icon={Ban} label="Ban" danger
-                              disabled={!isRunning || busy === `ban:${name}`}
-                              onClick={() => {
-                                const reason = prompt(`Ban reason for ${name} (optional):`);
-                                if (reason === null) return;
-                                doAction('ban', name, reason ? { reason } : {});
-                              }} />
+                            <BanButton name={name} disabled={!isRunning || !!busy}
+                              onBan={(reason) => doAction('ban', name, reason ? { reason } : {})} />
                           </div>
                         </td>
                       </tr>
@@ -208,7 +264,12 @@ export default function PlayersTab({ serverId, serverStatus }: { serverId: strin
                   <tbody>
                     {data.ops.map((op) => (
                       <tr key={op.uuid} className="border-b border-mc-border/40 hover:bg-mc-panel/40 transition-colors">
-                        <td className="px-4 py-2.5 font-mono text-gray-200">{op.name}</td>
+                        <td className="px-4 py-2.5">
+                          <div className="flex items-center gap-2.5">
+                            <Avatar name={op.name} size={24} />
+                            <span className="font-mono text-gray-200">{op.name}</span>
+                          </div>
+                        </td>
                         <td className="px-4 py-2.5">
                           <span className="text-xs text-yellow-400/80 bg-yellow-900/20 border border-yellow-700/20 px-1.5 py-0.5 rounded">
                             {OP_LEVELS[op.level] ?? `Level ${op.level}`}
@@ -265,7 +326,12 @@ export default function PlayersTab({ serverId, serverStatus }: { serverId: strin
                   <tbody>
                     {data.whitelist.map((p) => (
                       <tr key={p.uuid} className="border-b border-mc-border/40 hover:bg-mc-panel/40 transition-colors">
-                        <td className="px-4 py-2.5 font-mono text-gray-200">{p.name}</td>
+                        <td className="px-4 py-2.5">
+                          <div className="flex items-center gap-2.5">
+                            <Avatar name={p.name} size={24} />
+                            <span className="font-mono text-gray-200">{p.name}</span>
+                          </div>
+                        </td>
                         <td className="px-4 py-2.5 text-right">
                           <ActionButton icon={ShieldOff} label="Remove" danger
                             disabled={!isRunning || busy === `whitelist:${p.name}`}
@@ -301,7 +367,12 @@ export default function PlayersTab({ serverId, serverStatus }: { serverId: strin
                 <tbody>
                   {data.banned.map((p) => (
                     <tr key={p.uuid} className="border-b border-mc-border/40 hover:bg-mc-panel/40 transition-colors">
-                      <td className="px-4 py-2.5 font-mono text-gray-200">{p.name}</td>
+                      <td className="px-4 py-2.5">
+                        <div className="flex items-center gap-2.5">
+                          <Avatar name={p.name} size={24} />
+                          <span className="font-mono text-gray-200">{p.name}</span>
+                        </div>
+                      </td>
                       <td className="px-4 py-2.5 text-xs text-mc-muted">{p.reason || '—'}</td>
                       <td className="px-4 py-2.5 text-xs text-mc-muted hidden sm:table-cell">
                         {p.expires === 'forever' ? (
@@ -346,8 +417,8 @@ export default function PlayersTab({ serverId, serverStatus }: { serverId: strin
                     return (
                       <tr key={p.uuid} className="border-b border-mc-border/40 hover:bg-mc-panel/40 transition-colors">
                         <td className="px-4 py-2.5">
-                          <div className="flex items-center gap-2 flex-wrap">
-                            {isOnline && <span className="w-1.5 h-1.5 rounded-full bg-mc-green flex-shrink-0" />}
+                          <div className="flex items-center gap-2.5 flex-wrap">
+                            <Avatar name={p.name} size={24} />
                             <span className="font-mono text-gray-200">{p.name}</span>
                             {isOnline && <span className="text-xs text-mc-green bg-mc-green/20 border border-mc-green/20 px-1.5 py-0.5 rounded">Online</span>}
                             {isOp && <span className="text-xs text-yellow-400 bg-yellow-900/30 border border-yellow-700/30 px-1.5 py-0.5 rounded">OP</span>}
@@ -356,7 +427,7 @@ export default function PlayersTab({ serverId, serverStatus }: { serverId: strin
                         </td>
                         <td className="px-4 py-2.5 text-xs text-mc-muted font-mono hidden sm:table-cell truncate max-w-40">{p.uuid}</td>
                         <td className="px-4 py-2.5 text-right">
-                          <div className="flex justify-end gap-1">
+                          <div className="flex justify-end gap-1 flex-wrap">
                             {isOp ? (
                               <ActionButton icon={ShieldOff} label="Deop" danger
                                 disabled={!isRunning || busy === `deop:${p.name}`}
@@ -371,13 +442,8 @@ export default function PlayersTab({ serverId, serverStatus }: { serverId: strin
                                 disabled={!isRunning || busy === `pardon:${p.name}`}
                                 onClick={() => doAction('pardon', p.name)} />
                             ) : (
-                              <ActionButton icon={Ban} label="Ban" danger
-                                disabled={!isRunning || busy === `ban:${p.name}`}
-                                onClick={() => {
-                                  const reason = prompt(`Ban reason for ${p.name} (optional):`);
-                                  if (reason === null) return;
-                                  doAction('ban', p.name, reason ? { reason } : {});
-                                }} />
+                              <BanButton name={p.name} disabled={!isRunning || !!busy}
+                                onBan={(reason) => doAction('ban', p.name, reason ? { reason } : {})} />
                             )}
                           </div>
                         </td>

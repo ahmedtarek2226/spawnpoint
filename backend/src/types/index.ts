@@ -27,7 +27,6 @@ export interface ServerConfig {
   backupIntervalHours: number;
   backupRetainCount: number;
   backupLastAt: string | null;
-  discordWebhookUrl: string | null;
   modpackSource?: 'modrinth' | 'curseforge' | null;
   modpackProjectId?: string | null;
   modpackVersionId?: string | null;

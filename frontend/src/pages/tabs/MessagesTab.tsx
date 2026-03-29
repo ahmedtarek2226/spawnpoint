@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Plus, Trash2, MessageSquare, Clock, ToggleLeft, ToggleRight } from 'lucide-react';
+import { Plus, Trash2, X, MessageSquare, Clock, Pencil } from 'lucide-react';
 import { api } from '../../api/client';
 
 interface ServerMessage {
@@ -100,6 +100,7 @@ function MessageCard({ msg, serverId, onUpdated, onDeleted }: {
   const [content, setContent] = useState(msg.content);
   const [intervalMinutes, setIntervalMinutes] = useState(msg.intervalMinutes ?? 30);
   const [saving, setSaving] = useState(false);
+  const [confirmDelete, setConfirmDelete] = useState(false);
 
   async function save() {
     setSaving(true);
@@ -120,7 +121,7 @@ function MessageCard({ msg, serverId, onUpdated, onDeleted }: {
   }
 
   async function remove() {
-    if (!confirm('Delete this message?')) return;
+    if (!confirmDelete) { setConfirmDelete(true); return; }
     await api.delete(`/servers/${serverId}/messages/${msg.id}`).catch(() => {});
     onDeleted();
   }
@@ -138,11 +139,7 @@ function MessageCard({ msg, serverId, onUpdated, onDeleted }: {
               autoFocus
             />
           ) : (
-            <pre
-              className="font-mono text-xs text-gray-300 whitespace-pre-wrap break-words cursor-pointer hover:text-gray-100 transition-colors"
-              onClick={() => setEditing(true)}
-              title="Click to edit"
-            >
+            <pre className="font-mono text-xs text-gray-300 whitespace-pre-wrap break-words">
               {msg.content}
             </pre>
           )}
@@ -167,13 +164,37 @@ function MessageCard({ msg, serverId, onUpdated, onDeleted }: {
           )}
         </div>
 
-        <div className="flex items-center gap-0.5 flex-shrink-0">
-          <button onClick={toggle} className="text-mc-muted hover:text-mc-green p-1.5 transition-colors" title={msg.enabled ? 'Disable' : 'Enable'}>
-            {msg.enabled ? <ToggleRight size={17} className="text-mc-green" /> : <ToggleLeft size={17} />}
+        <div className="flex items-center gap-1.5 flex-shrink-0">
+          {!editing && (
+            <button onClick={() => setEditing(true)} className="text-mc-muted hover:text-gray-300 p-1.5 transition-colors" title="Edit">
+              <Pencil size={12} />
+            </button>
+          )}
+          <button
+            onClick={toggle}
+            className={`relative inline-flex h-5 w-9 flex-shrink-0 rounded-full border-2 transition-colors duration-200 focus:outline-none ${
+              msg.enabled ? 'border-mc-green bg-mc-green' : 'border-mc-border bg-mc-border/40'
+            }`}
+            title={msg.enabled ? 'Disable' : 'Enable'}
+          >
+            <span className={`inline-block h-3.5 w-3.5 transform rounded-full bg-white shadow transition-transform duration-200 mt-[1px] ${
+              msg.enabled ? 'translate-x-3.5' : 'translate-x-0.5'
+            }`} />
           </button>
-          <button onClick={remove} className="text-mc-muted hover:text-red-400 p-1.5 transition-colors" title="Delete">
-            <Trash2 size={12} />
-          </button>
+          {confirmDelete ? (
+            <div className="flex items-center gap-1">
+              <button onClick={remove} className="text-xs text-red-400 hover:text-red-300 px-1.5 py-0.5 rounded border border-red-700/50 hover:bg-red-900/30 transition-colors">
+                Delete
+              </button>
+              <button onClick={() => setConfirmDelete(false)} className="text-mc-muted hover:text-gray-300 p-1 transition-colors">
+                <X size={11} />
+              </button>
+            </div>
+          ) : (
+            <button onClick={remove} className="text-mc-muted hover:text-red-400 p-1.5 transition-colors" title="Delete">
+              <Trash2 size={12} />
+            </button>
+          )}
         </div>
       </div>
 

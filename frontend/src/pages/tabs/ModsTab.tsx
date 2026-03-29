@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { Package, Upload, Trash2, Search, Download, ExternalLink, ChevronLeft, ChevronRight, Loader2, Lock, AlertTriangle, RefreshCw } from 'lucide-react';
+import { Package, Upload, Trash2, X, Search, Download, ExternalLink, ChevronLeft, ChevronRight, Loader2, Lock, AlertTriangle, RefreshCw } from 'lucide-react';
 import { api, uploadFiles, imgProxy } from '../../api/client';
 import { useServersStore } from '../../stores/serversStore';
 
@@ -135,6 +135,7 @@ export default function ModsTab({ serverId }: { serverId: string }) {
   const [installedCfIds, setInstalledCfIds] = useState<Set<number>>(new Set());
   const [cfIdsLoaded, setCfIdsLoaded] = useState(false);
 
+  const [confirmRemovePath, setConfirmRemovePath] = useState<string | null>(null);
   const [missingMods, setMissingMods] = useState<MissingMod[]>([]);
   const [missingLoading, setMissingLoading] = useState(false);
   const [uploadError, setUploadError] = useState('');
@@ -171,7 +172,8 @@ export default function ModsTab({ serverId }: { serverId: string }) {
   }
 
   async function remove(entry: Entry) {
-    if (!confirm(`Remove ${entry.name}?`)) return;
+    if (confirmRemovePath !== entry.path) { setConfirmRemovePath(entry.path); return; }
+    setConfirmRemovePath(null);
     await api.delete(`/servers/${serverId}/files`, { path: entry.path });
     loadInstalled();
   }
@@ -494,13 +496,24 @@ export default function ModsTab({ serverId }: { serverId: string }) {
                         </td>
                         <td className="px-4 py-2.5 text-right text-mc-muted text-xs">{fmtSize(mod.size)}</td>
                         <td className="px-4 py-2.5 text-right">
-                          <button
-                            onClick={() => remove(mod)}
-                            className="p-1 rounded hover:bg-red-900/30 text-mc-muted hover:text-red-400 transition-colors"
-                            title="Remove mod"
-                          >
-                            <Trash2 size={13} />
-                          </button>
+                          {confirmRemovePath === mod.path ? (
+                            <div className="flex items-center gap-1 justify-end">
+                              <button onClick={() => remove(mod)} className="text-xs text-red-400 hover:text-red-300 px-1.5 py-0.5 rounded border border-red-700/50 hover:bg-red-900/30 transition-colors">
+                                Remove?
+                              </button>
+                              <button onClick={() => setConfirmRemovePath(null)} className="p-1 text-mc-muted hover:text-gray-300 transition-colors">
+                                <X size={11} />
+                              </button>
+                            </div>
+                          ) : (
+                            <button
+                              onClick={() => remove(mod)}
+                              className="p-1 rounded hover:bg-red-900/30 text-mc-muted hover:text-red-400 transition-colors"
+                              title="Remove mod"
+                            >
+                              <Trash2 size={13} />
+                            </button>
+                          )}
                         </td>
                       </tr>
                     ))}

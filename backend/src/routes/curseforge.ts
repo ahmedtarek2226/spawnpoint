@@ -7,6 +7,8 @@ import { nanoid } from 'nanoid';
 import { getServer } from '../models/Server';
 import { javaForMcVersion } from './prism';
 import { SERVERS_DIR } from '../config';
+import { ApiError } from '../errors';
+import { getModsDir } from '../utils/getModsDir';
 import {
   cfEnabled, cfGet, cfPost, cfFingerprint,
   LOADER_TYPE, GAME_ID, CLASS_MOD, CLASS_MODPACK,
@@ -23,7 +25,7 @@ globalRouter.get('/status', (_req: Request, res: Response) => {
 const PACK_PAGE_SIZE = 20;
 
 globalRouter.get('/modpacks/search', async (req: Request, res: Response, next: NextFunction) => {
-  if (!cfEnabled()) return next(Object.assign(new Error('CurseForge API key not configured'), { status: 503 }));
+  if (!cfEnabled()) return next(new ApiError('CurseForge API key not configured', 503));
   try {
     const q = (req.query.q as string) ?? '';
     const offset = parseInt((req.query.offset as string) ?? '0', 10) || 0;
@@ -37,7 +39,7 @@ globalRouter.get('/modpacks/search', async (req: Request, res: Response, next: N
 });
 
 globalRouter.get('/modpacks/versions/:projectId', async (req: Request, res: Response, next: NextFunction) => {
-  if (!cfEnabled()) return next(Object.assign(new Error('CurseForge API key not configured'), { status: 503 }));
+  if (!cfEnabled()) return next(new ApiError('CurseForge API key not configured', 503));
   try {
     const resp = await cfGet<{ data: unknown[] }>(`/mods/${req.params.projectId}/files?pageSize=50&sortField=2&sortOrder=desc`);
     res.json({ success: true, data: resp.data });
@@ -77,7 +79,7 @@ function suggestMemoryMb(modCount: number): number {
 }
 
 globalRouter.get('/modpacks/:projectId/files/:fileId/estimate-memory', async (req: Request, res: Response, next: NextFunction) => {
-  if (!cfEnabled()) return next(Object.assign(new Error('CurseForge API key not configured'), { status: 503 }));
+  if (!cfEnabled()) return next(new ApiError('CurseForge API key not configured', 503));
   try {
     const { projectId, fileId } = req.params;
     const fileResp = await cfGet<{ data: { downloadUrl: string | null } }>(`/mods/${projectId}/files/${fileId}`);
@@ -119,10 +121,10 @@ const MOD_PAGE_SIZE = 20;
 const SUPPORTED_LOADERS = new Set(Object.keys(LOADER_TYPE));
 
 serverRouter.get('/search', async (req: Request, res: Response, next: NextFunction) => {
-  if (!cfEnabled()) return next(Object.assign(new Error('CurseForge API key not configured'), { status: 503 }));
+  if (!cfEnabled()) return next(new ApiError('CurseForge API key not configured', 503));
   try {
     const server = getServer(req.params.id);
-    if (!server) return next(Object.assign(new Error('Server not found'), { status: 404 }));
+    if (!server) return next(new ApiError('Server not found', 404));
 
     if (!SUPPORTED_LOADERS.has(server.type)) {
       return res.json({ success: true, data: { hits: [], total: 0 } });
@@ -141,10 +143,10 @@ serverRouter.get('/search', async (req: Request, res: Response, next: NextFuncti
 });
 
 serverRouter.get('/versions/:modId', async (req: Request, res: Response, next: NextFunction) => {
-  if (!cfEnabled()) return next(Object.assign(new Error('CurseForge API key not configured'), { status: 503 }));
+  if (!cfEnabled()) return next(new ApiError('CurseForge API key not configured', 503));
   try {
     const server = getServer(req.params.id);
-    if (!server) return next(Object.assign(new Error('Server not found'), { status: 404 }));
+    if (!server) return next(new ApiError('Server not found', 404));
 
     const loaderType = LOADER_TYPE[server.type] ?? 0;
     const resp = await cfGet<{ data: unknown[] }>(
@@ -155,20 +157,19 @@ serverRouter.get('/versions/:modId', async (req: Request, res: Response, next: N
 });
 
 serverRouter.post('/install', async (req: Request, res: Response, next: NextFunction) => {
-  if (!cfEnabled()) return next(Object.assign(new Error('CurseForge API key not configured'), { status: 503 }));
+  if (!cfEnabled()) return next(new ApiError('CurseForge API key not configured', 503));
   try {
     const { fileUrl, fileName } = req.body as { fileUrl: string; fileName: string };
-    if (!fileUrl || !fileName) return next(Object.assign(new Error('fileUrl and fileName are required'), { status: 400 }));
+    if (!fileUrl || !fileName) return next(new ApiError('fileUrl and fileName are required', 400));
     if (!fileUrl.startsWith('https://edge.forgecdn.net/') && !fileUrl.startsWith('https://mediafilez.forgecdn.net/')) {
-      return next(Object.assign(new Error('Only CurseForge CDN URLs are accepted'), { status: 400 }));
+      return next(new ApiError('Only CurseForge CDN URLs are accepted', 400));
     }
 
     const server = getServer(req.params.id);
-    if (!server) return next(Object.assign(new Error('Server not found'), { status: 404 }));
+    if (!server) return next(new ApiError('Server not found', 404));
 
     const serverDir = path.join(SERVERS_DIR, req.params.id);
-    const subdir = server.type === 'paper' || server.type === 'spigot' || server.type === 'purpur' ? 'plugins' : 'mods';
-    const modsDir = path.join(serverDir, subdir);
+    const modsDir = getModsDir(serverDir, server.type);
     fs.mkdirSync(modsDir, { recursive: true });
 
     const resp = await fetch(fileUrl, { headers: { 'User-Agent': 'Spawnpoint/1.0' } });
@@ -181,14 +182,13 @@ serverRouter.post('/install', async (req: Request, res: Response, next: NextFunc
 
 // Fingerprint all JARs and return map of { projectId: fileName }
 serverRouter.get('/installed-ids', async (req: Request, res: Response, next: NextFunction) => {
-  if (!cfEnabled()) return next(Object.assign(new Error('CurseForge API key not configured'), { status: 503 }));
+  if (!cfEnabled()) return next(new ApiError('CurseForge API key not configured', 503));
   try {
     const server = getServer(req.params.id);
-    if (!server) return next(Object.assign(new Error('Server not found'), { status: 404 }));
+    if (!server) return next(new ApiError('Server not found', 404));
 
     const serverDir = path.join(SERVERS_DIR, req.params.id);
-    const subdir = server.type === 'paper' || server.type === 'spigot' || server.type === 'purpur' ? 'plugins' : 'mods';
-    const modsDir = path.join(serverDir, subdir);
+    const modsDir = getModsDir(serverDir, server.type);
 
     if (!fs.existsSync(modsDir)) return res.json({ success: true, data: {} });
 

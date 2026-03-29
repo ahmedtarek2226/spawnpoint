@@ -16,8 +16,9 @@ import { createServer, getServer, updateServer } from '../models/Server';
 import { createBackup } from '../models/Backup';
 import { createBackupArchive } from './BackupService';
 import { stopServer, startServer, getServerRuntime } from './DockerManager';
-import { SERVERS_DIR, BACKUPS_DIR } from '../config';
+import { SERVERS_DIR, BACKUPS_DIR, DEFAULT_JVM_FLAGS } from '../config';
 import { getHostDataDir } from './hostDataDir';
+import { getModsDir } from '../utils/getModsDir';
 import type { JobType } from '../types';
 
 type Progress = (progress: number, step: string) => void;
@@ -86,7 +87,7 @@ export function enqueueInstallModrinth(params: {
       mcVersion: result.mcVersion,
       port: params.port ?? 25565,
       memoryMb: params.memoryMb ?? 4096,
-      jvmFlags: '-XX:+UseG1GC -XX:+ParallelRefProcEnabled -XX:MaxGCPauseMillis=200',
+      jvmFlags: DEFAULT_JVM_FLAGS,
       javaVersion: params.javaVersion ?? '21',
       rconPassword: nanoid(24),
       hostDirectory,
@@ -152,7 +153,7 @@ export function enqueueInstallCurseForge(params: {
       mcVersion: result.mcVersion,
       port: params.port ?? 25565,
       memoryMb: params.memoryMb ?? 4096,
-      jvmFlags: '-XX:+UseG1GC -XX:+ParallelRefProcEnabled -XX:MaxGCPauseMillis=200',
+      jvmFlags: DEFAULT_JVM_FLAGS,
       javaVersion: params.javaVersion ?? '21',
       rconPassword: nanoid(24),
       hostDirectory,
@@ -212,7 +213,7 @@ export function enqueueUpdateModpack(params: {
     }
 
     progress(30, 'Clearing mods…');
-    const modsDir = path.join(serverDir, 'mods');
+    const modsDir = getModsDir(serverDir, sv.type);
     if (fs.existsSync(modsDir)) {
       for (const f of fs.readdirSync(modsDir)) {
         const fp = path.join(modsDir, f);

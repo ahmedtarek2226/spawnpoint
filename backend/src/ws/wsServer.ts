@@ -36,7 +36,6 @@ export function broadcastAll(msg: WsOutbound): void {
 }
 
 export function broadcastToServer(serverId: string, msg: WsOutbound): void {
-  const kind = msg.type === 'console_line' ? consoleSubs : metricsSubs;
   const set = (msg.type === 'console_line' || msg.type === 'status_change')
     ? consoleSubs.get(serverId)
     : metricsSubs.get(serverId);

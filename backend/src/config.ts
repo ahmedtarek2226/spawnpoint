@@ -15,6 +15,7 @@ export const PUBLIC_DIR = path.join(APP_ROOT, 'public');
 export const MC_IMAGE = 'itzg/minecraft-server';
 export const RCON_PORT_INSIDE_CONTAINER = 25575;
 export const CONSOLE_BUFFER_SIZE = 1000;
+export const DEFAULT_JVM_FLAGS = '-XX:+UseG1GC -XX:+ParallelRefProcEnabled -XX:MaxGCPauseMillis=200';
 
 /**
  * Read /proc/self/mountinfo to find the HOST-side absolute path that is
@@ -73,15 +74,8 @@ export const CORS_ORIGIN = process.env.CORS_ORIGIN ?? '';
 
 export const APP_VERSION = process.env.BUILD_VERSION ?? '';
 
-// CurseForge API keys contain $ characters which Docker Compose interpolates,
-// corrupting the key. Read from a file first to avoid this entirely.
-function loadCurseForgeKey(): string {
-  const keyFile = path.join(DATA_DIR, 'curseforge.key');
-  try {
-    const raw = fs.readFileSync(keyFile, 'utf8').trim();
-    if (raw) return raw;
-  } catch { /* file doesn't exist */ }
-  return process.env.CURSEFORGE_API_KEY ?? '';
-}
-
-export const CURSEFORGE_API_KEY = loadCurseForgeKey();
+// Normalize the key: strip surrounding quotes and unescape $$ → $
+// so the key works whether loaded via env_file: (literal) or environment: ($$-escaped).
+export const CURSEFORGE_API_KEY = (process.env.CURSEFORGE_API_KEY ?? '')
+  .replace(/^["']|["']$/g, '')
+  .replace(/\$\$/g, '$');

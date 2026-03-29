@@ -1,8 +1,9 @@
-import { useState } from 'react';
+import { useState, lazy, Suspense } from 'react';
 import { Archive, CalendarClock, MessageSquare } from 'lucide-react';
-import BackupsTab from './BackupsTab';
-import ScheduleTab from './ScheduleTab';
-import MessagesTab from './MessagesTab';
+
+const BackupsTab  = lazy(() => import('./BackupsTab'));
+const ScheduleTab = lazy(() => import('./ScheduleTab'));
+const MessagesTab = lazy(() => import('./MessagesTab'));
 
 type Section = 'backups' | 'schedules' | 'messages';
 
@@ -37,9 +38,11 @@ export default function AutomationTab({ serverId }: { serverId: string }) {
 
       {/* Content */}
       <div className="flex-1 overflow-y-auto">
-        {section === 'backups' && <BackupsTab serverId={serverId} />}
-        {section === 'schedules' && <ScheduleTab serverId={serverId} />}
-        {section === 'messages' && <MessagesTab serverId={serverId} />}
+        <Suspense fallback={<div className="p-6 text-mc-muted text-sm">Loading…</div>}>
+          {section === 'backups' && <BackupsTab serverId={serverId} />}
+          {section === 'schedules' && <ScheduleTab serverId={serverId} />}
+          {section === 'messages' && <MessagesTab serverId={serverId} />}
+        </Suspense>
       </div>
     </div>
   );

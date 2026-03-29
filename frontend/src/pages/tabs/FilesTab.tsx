@@ -1,17 +1,11 @@
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useRef, useCallback, lazy, Suspense } from 'react';
 import {
-  Folder, FileText, ChevronRight, Upload, Trash2, Download,
-  ArrowLeft, Save, Plus, FolderPlus, RefreshCw, FilePen, FolderUp, ChevronDown,
+  Folder, FileText, ChevronRight, Upload, Trash2, X, Download,
+  Plus, FolderPlus, RefreshCw, FilePen, FolderUp, ChevronDown,
 } from 'lucide-react';
-import CodeMirror from '@uiw/react-codemirror';
-import { oneDark } from '@codemirror/theme-one-dark';
-import { json } from '@codemirror/lang-json';
-import { yaml } from '@codemirror/lang-yaml';
-import { StreamLanguage } from '@codemirror/language';
-import { properties } from '@codemirror/legacy-modes/mode/properties';
-import { toml } from '@codemirror/legacy-modes/mode/toml';
-import { keymap } from '@codemirror/view';
 import { api, uploadFiles } from '../../api/client';
+
+const FileEditor = lazy(() => import('./FileEditor'));
 
 interface Entry { name: string; path: string; isDir: boolean; size: number; mtime: string; }
 
@@ -24,16 +18,6 @@ const TEXT_EXTENSIONS = new Set([
 function isTextFile(filename: string): boolean {
   const ext = filename.split('.').pop()?.toLowerCase() ?? '';
   return TEXT_EXTENSIONS.has(ext);
-}
-
-function getExtensions(filename: string) {
-  const ext = filename.split('.').pop()?.toLowerCase() ?? '';
-  const exts = [oneDark];
-  if (ext === 'json') exts.push(json());
-  else if (ext === 'yaml' || ext === 'yml') exts.push(yaml());
-  else if (ext === 'toml') exts.push(StreamLanguage.define(toml));
-  else if (['properties', 'cfg', 'conf', 'ini'].includes(ext)) exts.push(StreamLanguage.define(properties));
-  return exts;
 }
 
 function fmtSize(bytes: number): string {
@@ -55,10 +39,6 @@ export default function FilesTab({ serverId }: { serverId: string }) {
 
   // Editor state
   const [editPath, setEditPath] = useState<string | null>(null);
-  const [editContent, setEditContent] = useState('');
-  const [savedContent, setSavedContent] = useState('');
-  const [saving, setSaving] = useState(false);
-  const [saveError, setSaveError] = useState('');
 
   // Create file/folder
   const [creating, setCreating] = useState<'file' | 'folder' | null>(null);
@@ -70,6 +50,8 @@ export default function FilesTab({ serverId }: { serverId: string }) {
   const [renameValue, setRenameValue] = useState('');
   const renameInputRef = useRef<HTMLInputElement>(null);
 
+  // Confirm delete
+  const [confirmDeletePath, setConfirmDeletePath] = useState<string | null>(null);
   // Upload conflict modal
   const [conflictModal, setConflictModal] = useState<{ conflicts: string[]; pending: File[] } | null>(null);
 
@@ -85,8 +67,6 @@ export default function FilesTab({ serverId }: { serverId: string }) {
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const folderInputRef = useRef<HTMLInputElement>(null);
-
-  const isDirty = editContent !== savedContent;
 
   const loadDir = useCallback(async (p: string) => {
     setLoading(true);
@@ -136,41 +116,13 @@ export default function FilesTab({ serverId }: { serverId: string }) {
       setDirError(`"${entry.name}" is too large to edit (${fmtSize(entry.size)}). Download it instead.`);
       return;
     }
-    setSaveError('');
-    try {
-      const content = await api.get<string>(`/servers/${serverId}/files/content?path=${encodeURIComponent(entry.path)}`);
-      setEditContent(content);
-      setSavedContent(content);
-      setEditPath(entry.path);
-    } catch (e: unknown) {
-      setDirError(e instanceof Error ? e.message : 'Cannot open file');
-    }
-  }
-
-  async function saveFile() {
-    if (!editPath) return;
-    setSaving(true);
-    setSaveError('');
-    try {
-      await api.put(`/servers/${serverId}/files/content`, { path: editPath, content: editContent });
-      setSavedContent(editContent);
-    } catch (e: unknown) {
-      setSaveError(e instanceof Error ? e.message : 'Save failed');
-    }
-    setSaving(false);
-  }
-
-  function closeEditor() {
-    if (isDirty && !confirm('You have unsaved changes. Discard them?')) return;
-    setEditPath(null);
-    setEditContent('');
-    setSavedContent('');
-    setSaveError('');
+    setEditPath(entry.path);
   }
 
   async function deleteEntry(entry: Entry, e: React.MouseEvent) {
     e.stopPropagation();
-    if (!confirm(`Delete "${entry.name}"?`)) return;
+    if (confirmDeletePath !== entry.path) { setConfirmDeletePath(entry.path); return; }
+    setConfirmDeletePath(null);
     try {
       await api.delete(`/servers/${serverId}/files`, { path: entry.path });
       loadDir(dirPath);
@@ -257,8 +209,6 @@ export default function FilesTab({ serverId }: { serverId: string }) {
         await api.put(`/servers/${serverId}/files/content`, { path: fullPath, content: '' });
         loadDir(dirPath);
         // Open the new file for editing immediately
-        setEditContent('');
-        setSavedContent('');
         setEditPath(fullPath);
       }
     } catch (err: unknown) {
@@ -287,68 +237,10 @@ export default function FilesTab({ serverId }: { serverId: string }) {
 
   // ── Editor view ──────────────────────────────────────────────────────────
   if (editPath !== null) {
-    const filename = editPath.split('/').pop() ?? editPath;
-    const saveKeymap = keymap.of([{
-      key: 'Mod-s',
-      run: () => { saveFile(); return true; },
-    }]);
-
     return (
-      <div className="flex flex-col h-full">
-        {/* Editor toolbar */}
-        <div className="flex items-center gap-2 px-3 py-2 border-b border-mc-border bg-mc-panel flex-shrink-0">
-          <button onClick={closeEditor} className="btn-ghost py-1 px-2 text-xs">
-            <ArrowLeft size={13} /> Files
-          </button>
-          <span className="text-mc-muted text-xs">/</span>
-          <span className="font-mono text-xs text-gray-300 truncate flex-1">
-            {editPath}
-            {isDirty && <span className="text-yellow-400 ml-1">●</span>}
-          </span>
-          {saveError && (
-            <span className="text-red-400 text-xs truncate max-w-48">{saveError}</span>
-          )}
-          <a
-            href={`/api/servers/${serverId}/files/download?path=${encodeURIComponent(editPath)}`}
-            download
-            className="btn-ghost py-1 px-2 text-xs flex-shrink-0"
-            title="Download file"
-          >
-            <Download size={13} />
-          </a>
-          <button
-            onClick={saveFile}
-            className="btn-primary py-1 px-3 text-xs flex-shrink-0"
-            disabled={saving || !isDirty}
-            title="Save (Ctrl+S / Cmd+S)"
-          >
-            <Save size={13} /> {saving ? 'Saving…' : 'Save'}
-          </button>
-        </div>
-
-        {/* CodeMirror editor */}
-        <div className="flex-1 overflow-hidden">
-          <CodeMirror
-            value={editContent}
-            onChange={setEditContent}
-            extensions={[...getExtensions(filename), saveKeymap]}
-            theme={oneDark}
-            height="100%"
-            style={{ height: '100%', fontSize: '13px' }}
-            basicSetup={{
-              lineNumbers: true,
-              foldGutter: true,
-              highlightActiveLine: true,
-              highlightSelectionMatches: true,
-              autocompletion: true,
-              bracketMatching: true,
-              closeBrackets: true,
-              indentOnInput: true,
-              tabSize: 2,
-            }}
-          />
-        </div>
-      </div>
+      <Suspense fallback={<div className="p-6 text-mc-muted text-sm">Loading editor…</div>}>
+        <FileEditor serverId={serverId} editPath={editPath} onClose={() => setEditPath(null)} />
+      </Suspense>
     );
   }
 
@@ -607,13 +499,30 @@ export default function FilesTab({ serverId }: { serverId: string }) {
                           <Download size={12} />
                         </a>
                       )}
-                      <button
-                        onClick={(e) => deleteEntry(entry, e)}
-                        className="p-1 rounded hover:bg-red-900/30 text-mc-muted hover:text-red-400"
-                        title="Delete"
-                      >
-                        <Trash2 size={12} />
-                      </button>
+                      {confirmDeletePath === entry.path ? (
+                        <>
+                          <button
+                            onClick={(e) => deleteEntry(entry, e)}
+                            className="text-xs text-red-400 hover:text-red-300 px-1.5 py-0.5 rounded border border-red-700/50 hover:bg-red-900/30 transition-colors"
+                          >
+                            Delete?
+                          </button>
+                          <button
+                            onClick={(e) => { e.stopPropagation(); setConfirmDeletePath(null); }}
+                            className="p-1 text-mc-muted hover:text-gray-300 transition-colors"
+                          >
+                            <X size={11} />
+                          </button>
+                        </>
+                      ) : (
+                        <button
+                          onClick={(e) => deleteEntry(entry, e)}
+                          className="p-1 rounded hover:bg-red-900/30 text-mc-muted hover:text-red-400"
+                          title="Delete"
+                        >
+                          <Trash2 size={12} />
+                        </button>
+                      )}
                     </div>
                   </td>
                 </tr>

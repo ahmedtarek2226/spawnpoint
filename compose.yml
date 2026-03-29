@@ -4,7 +4,7 @@ services:
     container_name: spawnpoint
     restart: unless-stopped
     ports:
-      - "${DASHBOARD_PORT:-3000}:3000"
+      - "${DASHBOARD_PORT:-3000}:${DASHBOARD_PORT:-3000}"
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
       # Data volume — can be a host path or named volume.
@@ -17,11 +17,23 @@ services:
         required: false
     environment:
       - DATA_DIR=/app/data
-      - PORT=3000
+      - PORT=${DASHBOARD_PORT:-3000}
       - DASHBOARD_USER=${DASHBOARD_USER:-}
       - DASHBOARD_PASSWORD=${DASHBOARD_PASSWORD:-}
       - CORS_ORIGIN=${CORS_ORIGIN:-}
-      # CURSEFORGE_API_KEY is intentionally omitted here — loaded via env_file
-      # above so that $ characters in the key are not interpolated by Compose.
+      # CURSEFORGE_API_KEY: either set it in .env (loaded literally by env_file above)
+      # or add it here with $$ escaping — the backend unescapes $$ → $ automatically.
+      # - CURSEFORGE_API_KEY=${CURSEFORGE_API_KEY:-}
       # Optional: override host path detection (only needed on Docker Desktop/macOS/Windows)
       # - HOST_DATA_DIR=/absolute/host/path/to/data
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:${DASHBOARD_PORT:-3000}/api/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"

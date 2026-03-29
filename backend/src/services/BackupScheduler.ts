@@ -5,7 +5,6 @@ import { listServers, updateServer } from '../models/Server';
 import { listBackups, createBackup, deleteBackup } from '../models/Backup';
 import { createBackupArchive } from './BackupService';
 import { setBackingUp } from './DockerManager';
-import { notifyBackupComplete } from './NotificationService';
 import { SERVERS_DIR, BACKUPS_DIR } from '../config';
 
 let interval: NodeJS.Timeout | null = null;
@@ -64,7 +63,6 @@ async function runAutoBackup(server: ReturnType<typeof listServers>[number]): Pr
   });
 
   updateServer(server.id, { backupLastAt: new Date().toISOString() });
-  notifyBackupComplete(server.id, server.name, label, sizeBytes / (1024 * 1024));
 
   // Prune oldest auto-backups over the retain limit
   const autoBackups = listBackups(server.id)

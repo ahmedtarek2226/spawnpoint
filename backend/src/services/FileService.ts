@@ -1,3 +1,4 @@
+import { ApiError } from '../errors';
 import fs from 'fs';
 import path from 'path';
 
@@ -5,7 +6,7 @@ export function safePath(serverDir: string, requestedPath: string): string {
   const resolved = path.resolve(serverDir, requestedPath.replace(/^\/+/, ''));
   const base = path.resolve(serverDir);
   if (resolved !== base && !resolved.startsWith(base + path.sep)) {
-    throw Object.assign(new Error('Path traversal detected'), { status: 403 });
+    throw new ApiError('Path traversal detected', 403);
   }
   return resolved;
 }
@@ -62,8 +63,8 @@ export function deleteEntry(serverDir: string, relativePath: string): void {
 export function renameEntry(serverDir: string, fromPath: string, toPath: string): void {
   const src = safePath(serverDir, fromPath);
   const dst = safePath(serverDir, toPath);
-  if (!fs.existsSync(src)) throw Object.assign(new Error('Source not found'), { status: 404 });
-  if (fs.existsSync(dst)) throw Object.assign(new Error('Destination already exists'), { status: 409 });
+  if (!fs.existsSync(src)) throw new ApiError('Source not found', 404);
+  if (fs.existsSync(dst)) throw new ApiError('Destination already exists', 409);
   fs.mkdirSync(path.dirname(dst), { recursive: true });
   fs.renameSync(src, dst);
 }

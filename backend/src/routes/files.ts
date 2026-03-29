@@ -6,6 +6,8 @@ import yauzl from 'yauzl';
 import { getServer } from '../models/Server';
 import { listDir, readFile, writeFile, deleteEntry, renameEntry, makeDir, parseProperties, stringifyProperties, safePath } from '../services/FileService';
 import { SERVERS_DIR } from '../config';
+import { ApiError } from '../errors';
+import { getModsDir } from '../utils/getModsDir';
 
 function extractJarsFromZip(zipPath: string, destDir: string): Promise<string[]> {
   return new Promise((resolve, reject) => {
@@ -45,7 +47,7 @@ function serverDir(id: string): string {
 
 function requireServer(req: Request, _res: Response, next: NextFunction): void {
   if (!getServer(req.params.id)) {
-    return next(Object.assign(new Error('Server not found'), { status: 404 }));
+    return next(new ApiError('Server not found', 404));
   }
   next();
 }
@@ -65,7 +67,7 @@ router.get('/', (req: Request, res: Response, next: NextFunction) => {
 router.get('/content', (req: Request, res: Response, next: NextFunction) => {
   try {
     const filePath = req.query.path as string;
-    if (!filePath) return next(Object.assign(new Error('path required'), { status: 400 }));
+    if (!filePath) return next(new ApiError('path required', 400));
     const content = readFile(serverDir(req.params.id), filePath);
     res.json({ success: true, data: content });
   } catch (err) { next(err); }
@@ -75,7 +77,7 @@ router.get('/content', (req: Request, res: Response, next: NextFunction) => {
 router.put('/content', (req: Request, res: Response, next: NextFunction) => {
   try {
     const { path: filePath, content } = req.body as { path: string; content: string };
-    if (!filePath || content === undefined) return next(Object.assign(new Error('path and content required'), { status: 400 }));
+    if (!filePath || content === undefined) return next(new ApiError('path and content required', 400));
     writeFile(serverDir(req.params.id), filePath, content);
     res.json({ success: true });
   } catch (err) { next(err); }
@@ -122,7 +124,7 @@ router.post('/upload', upload.array('files'), async (req: Request, res: Response
 router.get('/download', (req: Request, res: Response, next: NextFunction) => {
   try {
     const filePath = req.query.path as string;
-    if (!filePath) return next(Object.assign(new Error('path required'), { status: 400 }));
+    if (!filePath) return next(new ApiError('path required', 400));
     const target = safePath(serverDir(req.params.id), filePath);
     res.download(target);
   } catch (err) { next(err); }
@@ -132,7 +134,7 @@ router.get('/download', (req: Request, res: Response, next: NextFunction) => {
 router.delete('/', (req: Request, res: Response, next: NextFunction) => {
   try {
     const { path: filePath } = req.body as { path: string };
-    if (!filePath) return next(Object.assign(new Error('path required'), { status: 400 }));
+    if (!filePath) return next(new ApiError('path required', 400));
     deleteEntry(serverDir(req.params.id), filePath);
     res.json({ success: true });
   } catch (err) { next(err); }
@@ -142,7 +144,7 @@ router.delete('/', (req: Request, res: Response, next: NextFunction) => {
 router.post('/rename', (req: Request, res: Response, next: NextFunction) => {
   try {
     const { from, to } = req.body as { from: string; to: string };
-    if (!from || !to) return next(Object.assign(new Error('from and to required'), { status: 400 }));
+    if (!from || !to) return next(new ApiError('from and to required', 400));
     renameEntry(serverDir(req.params.id), from, to);
     res.json({ success: true });
   } catch (err) { next(err); }
@@ -152,7 +154,7 @@ router.post('/rename', (req: Request, res: Response, next: NextFunction) => {
 router.post('/mkdir', (req: Request, res: Response, next: NextFunction) => {
   try {
     const { path: dirPath } = req.body as { path: string };
-    if (!dirPath) return next(Object.assign(new Error('path required'), { status: 400 }));
+    if (!dirPath) return next(new ApiError('path required', 400));
     makeDir(serverDir(req.params.id), dirPath);
     res.json({ success: true });
   } catch (err) { next(err); }
@@ -192,9 +194,9 @@ router.get('/mods/missing', (req: Request, res: Response) => {
 router.get('/mods', (req: Request, res: Response, next: NextFunction) => {
   try {
     const server = getServer(req.params.id)!;
-    const isPlugin = ['paper', 'spigot', 'purpur'].includes(server.type);
-    const dir = isPlugin ? 'plugins' : 'mods';
-    const entries = listDir(serverDir(req.params.id), dir).filter(e => !e.isDir);
+    const modsAbsDir = getModsDir(serverDir(req.params.id), server.type);
+    const modsRelDir = path.relative(serverDir(req.params.id), modsAbsDir);
+    const entries = listDir(serverDir(req.params.id), modsRelDir).filter(e => !e.isDir);
     res.json({ success: true, data: entries });
   } catch {
     res.json({ success: true, data: [] });

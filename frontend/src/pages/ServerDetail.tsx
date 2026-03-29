@@ -1,23 +1,24 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, lazy, Suspense } from 'react';
 import { useParams, Routes, Route, NavLink } from 'react-router-dom';
-import { Play, Square, RotateCw, Zap, Terminal, FolderOpen, Settings, Archive, Package, Users } from 'lucide-react';
+import { Play, Square, RotateCw, Zap, Terminal, FolderOpen, Settings, SlidersHorizontal, Archive, Package, Users } from 'lucide-react';
 import { api } from '../api/client';
 import { useServersStore } from '../stores/serversStore';
 import StatusBadge from '../components/StatusBadge';
 import CrashBanner from '../components/CrashBanner';
-import ConsoleTab from './tabs/ConsoleTab';
-import FilesTab from './tabs/FilesTab';
-import PropertiesTab from './tabs/PropertiesTab';
-import ModsTab from './tabs/ModsTab';
-import AutomationTab from './tabs/AutomationTab';
-import SettingsTab from './tabs/SettingsTab';
-import PlayersTab from './tabs/PlayersTab';
+
+const ConsoleTab    = lazy(() => import('./tabs/ConsoleTab'));
+const FilesTab      = lazy(() => import('./tabs/FilesTab'));
+const PropertiesTab = lazy(() => import('./tabs/PropertiesTab'));
+const ModsTab       = lazy(() => import('./tabs/ModsTab'));
+const AutomationTab = lazy(() => import('./tabs/AutomationTab'));
+const SettingsTab   = lazy(() => import('./tabs/SettingsTab'));
+const PlayersTab    = lazy(() => import('./tabs/PlayersTab'));
 
 const TABS = [
   { path: '', label: 'Console', icon: Terminal },
   { path: 'players', label: 'Players', icon: Users },
   { path: 'files', label: 'Files', icon: FolderOpen },
-  { path: 'properties', label: 'Properties', icon: Settings },
+  { path: 'properties', label: 'Properties', icon: SlidersHorizontal },
   { path: 'mods', label: 'Mods/Plugins', icon: Package },
   { path: 'backups', label: 'Backups', icon: Archive },
   { path: 'settings', label: 'Settings', icon: Settings },
@@ -168,15 +169,17 @@ export default function ServerDetail() {
 
       {/* Tab content */}
       <div className="flex-1 overflow-hidden">
-        <Routes>
-          <Route index element={<ConsoleTab serverId={id!} />} />
-          <Route path="players" element={<PlayersTab serverId={id!} serverStatus={status} />} />
-          <Route path="files" element={<FilesTab serverId={id!} />} />
-          <Route path="properties" element={<PropertiesTab serverId={id!} />} />
-          <Route path="mods" element={<ModsTab serverId={id!} />} />
-          <Route path="backups" element={<AutomationTab serverId={id!} />} />
-          <Route path="settings" element={<SettingsTab server={server} />} />
-        </Routes>
+        <Suspense fallback={<div className="p-6 text-mc-muted text-sm">Loading…</div>}>
+          <Routes>
+            <Route index element={<ConsoleTab serverId={id!} />} />
+            <Route path="players" element={<PlayersTab serverId={id!} serverStatus={status} />} />
+            <Route path="files" element={<FilesTab serverId={id!} />} />
+            <Route path="properties" element={<PropertiesTab serverId={id!} />} />
+            <Route path="mods" element={<ModsTab serverId={id!} />} />
+            <Route path="backups" element={<AutomationTab serverId={id!} />} />
+            <Route path="settings" element={<SettingsTab server={server} />} />
+          </Routes>
+        </Suspense>
       </div>
 
     </div>

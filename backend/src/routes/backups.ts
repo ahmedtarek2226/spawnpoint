@@ -8,6 +8,7 @@ import { listBackups, getBackup, createBackup, deleteBackup } from '../models/Ba
 import { createBackupArchive, createWorldBackupArchive, restoreBackupArchive, detectWorldDirs, detectModpackInfo } from '../services/BackupService';
 import { stopServer, startServer, getServerRuntime, sendCommand } from '../services/DockerManager';
 import { SERVERS_DIR, BACKUPS_DIR } from '../config';
+import { ApiError } from '../errors';
 
 const upload = multer({ dest: '/tmp/mc-backups/' });
 
@@ -16,7 +17,7 @@ const router = Router({ mergeParams: true });
 router.get('/', (req: Request, res: Response, next: NextFunction) => {
   try {
     const server = getServer(req.params.id);
-    if (!server) return next(Object.assign(new Error('Server not found'), { status: 404 }));
+    if (!server) return next(new ApiError('Server not found', 404));
 
     const serverDir = path.join(SERVERS_DIR, server.id);
     const worldDirs = detectWorldDirs(serverDir);
@@ -36,7 +37,7 @@ router.get('/', (req: Request, res: Response, next: NextFunction) => {
 router.post('/', async (req: Request, res: Response, next: NextFunction) => {
   try {
     const server = getServer(req.params.id);
-    if (!server) return next(Object.assign(new Error('Server not found'), { status: 404 }));
+    if (!server) return next(new ApiError('Server not found', 404));
 
     const label = (req.body.label as string) || new Date().toLocaleString();
     const type: 'full' | 'world' = req.body.type === 'world' ? 'world' : 'full';
@@ -66,7 +67,7 @@ router.get('/:backupId/download', (req: Request, res: Response, next: NextFuncti
   try {
     const backup = getBackup(req.params.backupId);
     if (!backup || backup.serverId !== req.params.id) {
-      return next(Object.assign(new Error('Backup not found'), { status: 404 }));
+      return next(new ApiError('Backup not found', 404));
     }
     res.download(backup.filePath, path.basename(backup.filePath));
   } catch (err) { next(err); }
@@ -75,14 +76,14 @@ router.get('/:backupId/download', (req: Request, res: Response, next: NextFuncti
 router.post('/:backupId/restore', async (req: Request, res: Response, next: NextFunction) => {
   try {
     const server = getServer(req.params.id);
-    if (!server) return next(Object.assign(new Error('Server not found'), { status: 404 }));
+    if (!server) return next(new ApiError('Server not found', 404));
 
     const backup = getBackup(req.params.backupId);
     if (!backup || backup.serverId !== server.id) {
-      return next(Object.assign(new Error('Backup not found'), { status: 404 }));
+      return next(new ApiError('Backup not found', 404));
     }
     if (!fs.existsSync(backup.filePath)) {
-      return next(Object.assign(new Error('Backup file missing from disk'), { status: 404 }));
+      return next(new ApiError('Backup file missing from disk', 404));
     }
 
     const rt = getServerRuntime(server.id);
@@ -101,14 +102,14 @@ router.post('/:backupId/restore', async (req: Request, res: Response, next: Next
 router.post('/upload', upload.single('file'), (req: Request, res: Response, next: NextFunction) => {
   try {
     const server = getServer(req.params.id);
-    if (!server) return next(Object.assign(new Error('Server not found'), { status: 404 }));
+    if (!server) return next(new ApiError('Server not found', 404));
 
-    if (!req.file) return next(Object.assign(new Error('No file uploaded'), { status: 400 }));
+    if (!req.file) return next(new ApiError('No file uploaded', 400));
 
     const originalName = req.file.originalname;
     if (!originalName.endsWith('.tar.gz')) {
       fs.unlinkSync(req.file.path);
-      return next(Object.assign(new Error('Only .tar.gz backup files are accepted'), { status: 400 }));
+      return next(new ApiError('Only .tar.gz backup files are accepted', 400));
     }
 
     const id = nanoid(10);
@@ -128,7 +129,7 @@ router.delete('/:backupId', (req: Request, res: Response, next: NextFunction) =>
   try {
     const backup = getBackup(req.params.backupId);
     if (!backup || backup.serverId !== req.params.id) {
-      return next(Object.assign(new Error('Backup not found'), { status: 404 }));
+      return next(new ApiError('Backup not found', 404));
     }
     if (fs.existsSync(backup.filePath)) fs.unlinkSync(backup.filePath);
     deleteBackup(backup.id);

@@ -1,3 +1,4 @@
+import { ApiError } from '../errors';
 import { Router, Request, Response, NextFunction } from 'express';
 import { nanoid } from 'nanoid';
 import { getServer } from '../models/Server';
@@ -8,7 +9,7 @@ const router = Router({ mergeParams: true });
 router.get('/', (req: Request, res: Response, next: NextFunction) => {
   try {
     const server = getServer(req.params.id);
-    if (!server) return next(Object.assign(new Error('Server not found'), { status: 404 }));
+    if (!server) return next(new ApiError('Server not found', 404));
     res.json({ success: true, data: listSchedules(server.id) });
   } catch (err) { next(err); }
 });
@@ -16,17 +17,17 @@ router.get('/', (req: Request, res: Response, next: NextFunction) => {
 router.post('/', (req: Request, res: Response, next: NextFunction) => {
   try {
     const server = getServer(req.params.id);
-    if (!server) return next(Object.assign(new Error('Server not found'), { status: 404 }));
+    if (!server) return next(new ApiError('Server not found', 404));
 
     const { action, hour, minute, days, enabled } = req.body as {
       action: string; hour: number; minute?: number; days?: number[]; enabled?: boolean;
     };
 
     if (!['start', 'stop', 'restart'].includes(action)) {
-      return next(Object.assign(new Error('action must be "start", "stop", or "restart"'), { status: 400 }));
+      return next(new ApiError('action must be "start", "stop", or "restart"', 400));
     }
     if (typeof hour !== 'number' || hour < 0 || hour > 23) {
-      return next(Object.assign(new Error('hour must be 0–23'), { status: 400 }));
+      return next(new ApiError('hour must be 0–23', 400));
     }
 
     const schedule = createSchedule({
@@ -47,7 +48,7 @@ router.patch('/:scheduleId', (req: Request, res: Response, next: NextFunction) =
   try {
     const schedule = getSchedule(req.params.scheduleId);
     if (!schedule || schedule.serverId !== req.params.id) {
-      return next(Object.assign(new Error('Schedule not found'), { status: 404 }));
+      return next(new ApiError('Schedule not found', 404));
     }
 
     const updated = updateSchedule(schedule.id, req.body);
@@ -59,7 +60,7 @@ router.delete('/:scheduleId', (req: Request, res: Response, next: NextFunction) 
   try {
     const schedule = getSchedule(req.params.scheduleId);
     if (!schedule || schedule.serverId !== req.params.id) {
-      return next(Object.assign(new Error('Schedule not found'), { status: 404 }));
+      return next(new ApiError('Schedule not found', 404));
     }
     deleteSchedule(schedule.id);
     res.json({ success: true });

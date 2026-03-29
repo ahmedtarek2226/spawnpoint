@@ -8,9 +8,10 @@ import {
   getServerRuntime, syncContainerStates
 } from '../services/DockerManager';
 import { SERVER_TYPES, CrashIssue } from '../types';
-import { SERVERS_DIR, BACKUPS_DIR } from '../config';
+import { SERVERS_DIR, BACKUPS_DIR, DEFAULT_JVM_FLAGS } from '../config';
 import { getHostDataDir } from '../services/hostDataDir';
 import { safePath, dirSizeSync, readFile, writeFile, parseProperties, stringifyProperties } from '../services/FileService';
+import { ApiError } from '../errors';
 
 const router = Router();
 
@@ -31,7 +32,7 @@ router.get('/', (_req, res) => {
 
 router.get('/:id', (req, res, next) => {
   const server = getServer(req.params.id);
-  if (!server) return next(Object.assign(new Error('Server not found'), { status: 404 }));
+  if (!server) return next(new ApiError('Server not found', 404));
   res.json({ success: true, data: { ...stripSensitive(server), runtime: getServerRuntime(server.id) } });
 });
 
@@ -43,10 +44,10 @@ router.post('/', async (req: Request, res: Response, next: NextFunction) => {
     };
 
     if (!name || !type || !mcVersion) {
-      return next(Object.assign(new Error('name, type, mcVersion required'), { status: 400 }));
+      return next(new ApiError('name, type, mcVersion required', 400));
     }
     if (!SERVER_TYPES.includes(type as typeof SERVER_TYPES[number])) {
-      return next(Object.assign(new Error(`Invalid server type: ${type}`), { status: 400 }));
+      return next(new ApiError(`Invalid server type: ${type}`, 400));
     }
 
     const id = nanoid(10);
@@ -60,7 +61,7 @@ router.post('/', async (req: Request, res: Response, next: NextFunction) => {
       mcVersion,
       port: port ?? 25565,
       memoryMb: memoryMb ?? 2048,
-      jvmFlags: jvmFlags ?? '-XX:+UseG1GC -XX:+ParallelRefProcEnabled -XX:MaxGCPauseMillis=200',
+      jvmFlags: jvmFlags ?? DEFAULT_JVM_FLAGS,
       javaVersion: javaVersion ?? '21',
       rconPassword: nanoid(24),
       hostDirectory,
@@ -77,7 +78,7 @@ router.post('/', async (req: Request, res: Response, next: NextFunction) => {
 router.patch('/:id', async (req: Request, res: Response, next: NextFunction) => {
   try {
     const server = getServer(req.params.id);
-    if (!server) return next(Object.assign(new Error('Server not found'), { status: 404 }));
+    if (!server) return next(new ApiError('Server not found', 404));
 
     const updated = updateServer(server.id, req.body);
 
@@ -99,7 +100,7 @@ router.patch('/:id', async (req: Request, res: Response, next: NextFunction) => 
 router.delete('/:id', async (req: Request, res: Response, next: NextFunction) => {
   try {
     const server = getServer(req.params.id);
-    if (!server) return next(Object.assign(new Error('Server not found'), { status: 404 }));
+    if (!server) return next(new ApiError('Server not found', 404));
 
     const rt = getServerRuntime(server.id);
     if (rt.status === 'running' || rt.status === 'starting') {
@@ -120,11 +121,11 @@ router.delete('/:id', async (req: Request, res: Response, next: NextFunction) =>
 router.post('/:id/duplicate', async (req: Request, res: Response, next: NextFunction) => {
   try {
     const server = getServer(req.params.id);
-    if (!server) return next(Object.assign(new Error('Server not found'), { status: 404 }));
+    if (!server) return next(new ApiError('Server not found', 404));
 
     const rt = getServerRuntime(server.id);
     if (rt.status !== 'stopped' && rt.status !== 'crashed') {
-      return next(Object.assign(new Error('Server must be stopped before duplicating'), { status: 409 }));
+      return next(new ApiError('Server must be stopped before duplicating', 409));
     }
 
     const { nanoid } = await import('nanoid');
@@ -151,7 +152,7 @@ router.post('/:id/duplicate', async (req: Request, res: Response, next: NextFunc
 router.get('/:id/disk-usage', (req: Request, res: Response, next: NextFunction) => {
   try {
     const server = getServer(req.params.id);
-    if (!server) return next(Object.assign(new Error('Server not found'), { status: 404 }));
+    if (!server) return next(new ApiError('Server not found', 404));
     const serverFiles = dirSizeSync(path.join(SERVERS_DIR, server.id));
     const backups = dirSizeSync(path.join(BACKUPS_DIR, server.id));
     res.json({ success: true, data: { serverFiles, backups, total: serverFiles + backups } });
@@ -177,7 +178,7 @@ let versionCache: { latestRelease: string; latestSnapshot: string; fetchedAt: nu
 router.get('/:id/version-check', async (req: Request, res: Response, next: NextFunction) => {
   try {
     const server = getServer(req.params.id);
-    if (!server) return next(Object.assign(new Error('Server not found'), { status: 404 }));
+    if (!server) return next(new ApiError('Server not found', 404));
 
     const now = Date.now();
     if (!versionCache || now - versionCache.fetchedAt > 6 * 60 * 60 * 1000) {
@@ -203,7 +204,7 @@ router.get('/:id/version-check', async (req: Request, res: Response, next: NextF
 router.post('/:id/start', async (req: Request, res: Response, next: NextFunction) => {
   try {
     const server = getServer(req.params.id);
-    if (!server) return next(Object.assign(new Error('Server not found'), { status: 404 }));
+    if (!server) return next(new ApiError('Server not found', 404));
 
     // Check for port conflict with another active server
     const conflict = listServers().find((s) => {
@@ -212,10 +213,7 @@ router.post('/:id/start', async (req: Request, res: Response, next: NextFunction
       return s.port === server.port && (rt.status === 'running' || rt.status === 'starting');
     });
     if (conflict) {
-      return next(Object.assign(
-        new Error(`Port ${server.port} is already in use by "${conflict.name}"`),
-        { status: 409 }
-      ));
+      return next(new ApiError(`Port ${server.port} is already in use by "${conflict.name}"`, 409));
     }
 
     await startServer(server);
@@ -226,7 +224,7 @@ router.post('/:id/start', async (req: Request, res: Response, next: NextFunction
 router.post('/:id/stop', async (req: Request, res: Response, next: NextFunction) => {
   try {
     const server = getServer(req.params.id);
-    if (!server) return next(Object.assign(new Error('Server not found'), { status: 404 }));
+    if (!server) return next(new ApiError('Server not found', 404));
     await stopServer(server.id);
     res.json({ success: true });
   } catch (err) { next(err); }
@@ -235,7 +233,7 @@ router.post('/:id/stop', async (req: Request, res: Response, next: NextFunction)
 router.post('/:id/restart', async (req: Request, res: Response, next: NextFunction) => {
   try {
     const server = getServer(req.params.id);
-    if (!server) return next(Object.assign(new Error('Server not found'), { status: 404 }));
+    if (!server) return next(new ApiError('Server not found', 404));
     await restartServer(server);
     res.json({ success: true });
   } catch (err) { next(err); }
@@ -244,7 +242,7 @@ router.post('/:id/restart', async (req: Request, res: Response, next: NextFuncti
 router.post('/:id/kill', async (req: Request, res: Response, next: NextFunction) => {
   try {
     const server = getServer(req.params.id);
-    if (!server) return next(Object.assign(new Error('Server not found'), { status: 404 }));
+    if (!server) return next(new ApiError('Server not found', 404));
     await killServer(server.id);
     res.json({ success: true });
   } catch (err) { next(err); }
@@ -254,7 +252,7 @@ router.post('/:id/kill', async (req: Request, res: Response, next: NextFunction)
 router.post('/:id/fix-crash', async (req: Request, res: Response, next: NextFunction) => {
   try {
     const server = getServer(req.params.id);
-    if (!server) return next(Object.assign(new Error('Server not found'), { status: 404 }));
+    if (!server) return next(new ApiError('Server not found', 404));
 
     const rt = getServerRuntime(server.id);
     const issues = rt.crashDiagnosis ?? [];

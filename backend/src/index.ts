@@ -108,7 +108,7 @@ async function main(): Promise<void> {
   if (CURSEFORGE_API_KEY) {
     console.log('[curseforge] API key loaded — CurseForge mod browser and modpack installer are enabled.');
   } else {
-    console.log('[curseforge] No API key found. To unlock CurseForge features, create data/curseforge.key containing your API key (get one free at https://console.curseforge.com/)');
+    console.log('[curseforge] No API key found. To unlock CurseForge features, set CURSEFORGE_API_KEY in your .env file (get one free at https://console.curseforge.com/)');
   }
 
   const dockerAvailable = await checkDockerAvailable();

@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Plus, Trash2, Clock, CalendarX, Play, Square, RotateCw, X } from 'lucide-react';
+import { Plus, Clock, CalendarX, Play, Square, RotateCw, X } from 'lucide-react';
 import { api } from '../../api/client';
 
 interface Schedule {
@@ -103,6 +103,7 @@ function ScheduleCard({ schedule, serverId, onChanged }: {
   schedule: Schedule; serverId: string; onChanged: () => void;
 }) {
   const [toggling, setToggling] = useState(false);
+  const [confirmDelete, setConfirmDelete] = useState(false);
   const cfg = ACTION_CONFIG[schedule.action];
   const Icon = cfg.Icon;
   const next = schedule.enabled ? nextRun(schedule) : null;
@@ -123,7 +124,7 @@ function ScheduleCard({ schedule, serverId, onChanged }: {
   }
 
   return (
-    <div className={`bg-mc-dark border rounded-xl p-4 transition-opacity ${!schedule.enabled ? 'opacity-40' : ''} ${cfg.border}`}>
+    <div className={`bg-mc-dark border rounded-xl p-4 transition-all ${!schedule.enabled ? 'opacity-40' : `hover:bg-mc-panel/30`} ${cfg.border}`}>
       {/* Top row */}
       <div className="flex items-center gap-3 mb-3">
         {/* Action pill */}
@@ -154,13 +155,27 @@ function ScheduleCard({ schedule, serverId, onChanged }: {
         <Toggle enabled={schedule.enabled} onChange={toggle} disabled={toggling} />
 
         {/* Delete */}
-        <button
-          onClick={remove}
-          className="p-1 rounded-lg hover:bg-red-900/30 text-mc-muted hover:text-red-400 transition-colors flex-shrink-0"
-          title="Delete"
-        >
-          <X size={13} />
-        </button>
+        {confirmDelete ? (
+          <div className="flex items-center gap-1 flex-shrink-0">
+            <button
+              onClick={remove}
+              className="text-xs px-2 py-1 rounded bg-red-900/50 border border-red-700/50 text-red-400 hover:bg-red-900/80 transition-colors"
+            >
+              Delete?
+            </button>
+            <button onClick={() => setConfirmDelete(false)} className="text-mc-muted hover:text-gray-300 p-1 transition-colors">
+              <X size={11} />
+            </button>
+          </div>
+        ) : (
+          <button
+            onClick={() => setConfirmDelete(true)}
+            className="p-1 rounded-lg hover:bg-red-900/30 text-mc-muted hover:text-red-400 transition-colors flex-shrink-0"
+            title="Delete"
+          >
+            <X size={13} />
+          </button>
+        )}
       </div>
 
       {/* Days */}

@@ -1,3 +1,4 @@
+import { ApiError } from '../errors';
 import { Router, Request, Response, NextFunction } from 'express';
 import dns from 'dns';
 import net from 'net';
@@ -58,19 +59,19 @@ function evictExpired() {
 router.get('/', async (req: Request, res: Response, next: NextFunction) => {
   try {
     const url = (req.query.url as string) ?? '';
-    if (!url) return next(Object.assign(new Error('url parameter required'), { status: 400 }));
+    if (!url) return next(new ApiError('url parameter required', 400));
 
     let parsed: URL;
     try { parsed = new URL(url); } catch {
-      return next(Object.assign(new Error('Invalid URL'), { status: 400 }));
+      return next(new ApiError('Invalid URL', 400));
     }
     if (!ALLOWED_HOSTS.has(parsed.hostname)) {
-      return next(Object.assign(new Error('Image host not allowed'), { status: 403 }));
+      return next(new ApiError('Image host not allowed', 403));
     }
 
     // Resolve hostname and block private IPs (prevents SSRF via DNS rebinding)
     if (await resolvedToPrivate(parsed.hostname)) {
-      return next(Object.assign(new Error('Image host not allowed'), { status: 403 }));
+      return next(new ApiError('Image host not allowed', 403));
     }
 
     // Serve from cache if fresh
@@ -85,11 +86,11 @@ router.get('/', async (req: Request, res: Response, next: NextFunction) => {
     const resp = await fetch(url, {
       headers: { 'User-Agent': 'Spawnpoint/1.0 (self-hosted MC manager)' },
     });
-    if (!resp.ok) return next(Object.assign(new Error(`Upstream ${resp.status}`), { status: 502 }));
+    if (!resp.ok) return next(new ApiError(`Upstream ${resp.status}`, 502));
 
     const contentType = resp.headers.get('content-type') ?? 'image/png';
     if (!contentType.startsWith('image/')) {
-      return next(Object.assign(new Error('Not an image'), { status: 400 }));
+      return next(new ApiError('Not an image', 400));
     }
 
     const data = Buffer.from(await resp.arrayBuffer());

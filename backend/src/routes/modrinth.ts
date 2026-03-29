@@ -4,6 +4,8 @@ import fs from 'fs';
 import crypto from 'crypto';
 import { getServer } from '../models/Server';
 import { SERVERS_DIR } from '../config';
+import { ApiError } from '../errors';
+import { getModsDir } from '../utils/getModsDir';
 
 const router = Router({ mergeParams: true });
 
@@ -24,7 +26,7 @@ const SERVER_LOADER_MAP: Record<string, { loaders: string[]; projectType: string
 router.get('/search', async (req: Request, res: Response, next: NextFunction) => {
   try {
     const server = getServer(req.params.id);
-    if (!server) return next(Object.assign(new Error('Server not found'), { status: 404 }));
+    if (!server) return next(new ApiError('Server not found', 404));
 
     const q = (req.query.q as string) ?? '';
     const offset = parseInt((req.query.offset as string) ?? '0', 10) || 0;
@@ -59,7 +61,7 @@ router.get('/search', async (req: Request, res: Response, next: NextFunction) =>
 router.get('/versions/:projectId', async (req: Request, res: Response, next: NextFunction) => {
   try {
     const server = getServer(req.params.id);
-    if (!server) return next(Object.assign(new Error('Server not found'), { status: 404 }));
+    if (!server) return next(new ApiError('Server not found', 404));
 
     const info = SERVER_LOADER_MAP[server.type];
     if (!info) return res.json({ success: true, data: [] });
@@ -84,11 +86,9 @@ router.get('/versions/:projectId', async (req: Request, res: Response, next: Nex
 router.get('/installed-ids', async (req: Request, res: Response, next: NextFunction) => {
   try {
     const server = getServer(req.params.id);
-    if (!server) return next(Object.assign(new Error('Server not found'), { status: 404 }));
+    if (!server) return next(new ApiError('Server not found', 404));
 
-    const isPlugin = ['paper', 'spigot', 'purpur', 'bungeecord', 'velocity'].includes(server.type);
-    const subDir = isPlugin ? 'plugins' : 'mods';
-    const modsDir = path.join(SERVERS_DIR, server.id, subDir);
+    const modsDir = getModsDir(path.join(SERVERS_DIR, server.id), server.type);
 
     if (!fs.existsSync(modsDir)) return res.json({ success: true, data: {} });
 
@@ -130,21 +130,19 @@ router.get('/installed-ids', async (req: Request, res: Response, next: NextFunct
 router.post('/install', async (req: Request, res: Response, next: NextFunction) => {
   try {
     const server = getServer(req.params.id);
-    if (!server) return next(Object.assign(new Error('Server not found'), { status: 404 }));
+    if (!server) return next(new ApiError('Server not found', 404));
 
     const { fileUrl, fileName } = req.body as { fileUrl: string; fileName: string };
-    if (!fileUrl || !fileName) return next(Object.assign(new Error('fileUrl and fileName required'), { status: 400 }));
+    if (!fileUrl || !fileName) return next(new ApiError('fileUrl and fileName required', 400));
 
     // Validate URL is from Modrinth CDN
     if (!fileUrl.startsWith('https://cdn.modrinth.com/')) {
-      return next(Object.assign(new Error('Only Modrinth CDN URLs are accepted'), { status: 400 }));
+      return next(new ApiError('Only Modrinth CDN URLs are accepted', 400));
     }
     // Sanitize filename
     const safeName = path.basename(fileName).replace(/[^a-zA-Z0-9._\-]/g, '_');
 
-    const isPlugin = ['paper', 'spigot', 'purpur', 'bungeecord', 'velocity'].includes(server.type);
-    const subDir = isPlugin ? 'plugins' : 'mods';
-    const destDir = path.join(SERVERS_DIR, server.id, subDir);
+    const destDir = getModsDir(path.join(SERVERS_DIR, server.id), server.type);
     fs.mkdirSync(destDir, { recursive: true });
 
     const resp = await fetch(fileUrl, {

@@ -8,7 +8,6 @@ import { getHostDataDir } from './hostDataDir';
 import { analyzeCrash } from './CrashAnalyzer';
 import { getServer } from '../models/Server';
 import { startScheduler, stopScheduler, onPlayerJoin } from './MessageScheduler';
-import { notifyServerStart, notifyServerStop, notifyServerCrash, notifyPlayerJoin } from './NotificationService';
 
 const docker = new Dockerode({ socketPath: '/var/run/docker.sock' });
 
@@ -52,12 +51,6 @@ function setStatus(serverId: string, status: ServerStatus): void {
   }
   broadcast(serverId, { type: 'status_change', serverId, status, startedAt: rt.startedAt, stoppedAt: rt.stoppedAt });
 
-  const config = getServer(serverId);
-  if (config) {
-    if (status === 'running') notifyServerStart(serverId, config.name);
-    else if (status === 'stopped') notifyServerStop(serverId, config.name);
-    else if (status === 'crashed') notifyServerCrash(serverId, config.name);
-  }
 }
 
 export function setBackingUp(serverId: string, value: boolean): void {
@@ -97,10 +90,7 @@ function pushLine(serverId: string, line: string, skipStatusInference = false): 
       if (!rt.playersOnline.includes(name)) rt.playersOnline.push(name);
       rt.metrics.playersOnline = rt.playersOnline.length;
       const config = getServer(serverId);
-      if (config) {
-        onPlayerJoin(config, name);
-        notifyPlayerJoin(serverId, config.name, name);
-      }
+      if (config) onPlayerJoin(config, name);
     }
     const leaveMatch = line.match(/(\w{3,16})\s+left the game/);
     if (leaveMatch) {
@@ -446,16 +436,4 @@ export async function checkDockerAvailable(): Promise<boolean> {
   } catch {
     return false;
   }
-}
-
-export async function pullImage(): Promise<void> {
-  await new Promise<void>((resolve, reject) => {
-    docker.pull(MC_IMAGE, (err: Error | null, stream: NodeJS.ReadableStream) => {
-      if (err) return reject(err);
-      docker.modem.followProgress(stream, (err2: Error | null) => {
-        if (err2) reject(err2);
-        else resolve();
-      });
-    });
-  });
 }

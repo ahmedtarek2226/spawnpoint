@@ -10,8 +10,9 @@ import { importMrpack } from '../services/MrpackImporter';
 import { cfEnabled } from '../services/CurseForgeClient';
 import { createServer } from '../models/Server';
 import { enqueueInstallModrinth, enqueueInstallCurseForge } from '../services/JobRunner';
-import { SERVERS_DIR } from '../config';
+import { SERVERS_DIR, DEFAULT_JVM_FLAGS } from '../config';
 import { getHostDataDir } from '../services/hostDataDir';
+import { ApiError } from '../errors';
 
 const router = Router();
 const upload = multer({ dest: '/tmp/mc-prism-uploads/' });
@@ -19,7 +20,7 @@ const upload = multer({ dest: '/tmp/mc-prism-uploads/' });
 router.post('/import', upload.single('export'), async (req: Request, res: Response, next: NextFunction) => {
   try {
     const file = req.file;
-    if (!file) return next(Object.assign(new Error('No export file uploaded'), { status: 400 }));
+    if (!file) return next(new ApiError('No export file uploaded', 400));
 
     const id = nanoid(10);
     const serverLocalDir = path.join(SERVERS_DIR, id);
@@ -43,7 +44,7 @@ router.post('/import', upload.single('export'), async (req: Request, res: Respon
       mcVersion: result.mcVersion,
       port,
       memoryMb,
-      jvmFlags: '-XX:+UseG1GC -XX:+ParallelRefProcEnabled -XX:MaxGCPauseMillis=200',
+      jvmFlags: DEFAULT_JVM_FLAGS,
       javaVersion,
       rconPassword: nanoid(24),
       hostDirectory,
@@ -73,10 +74,10 @@ router.post('/import', upload.single('export'), async (req: Request, res: Respon
 router.post('/import-mrpack', upload.single('export'), async (req: Request, res: Response, next: NextFunction) => {
   try {
     const file = req.file;
-    if (!file) return next(Object.assign(new Error('No file uploaded'), { status: 400 }));
+    if (!file) return next(new ApiError('No file uploaded', 400));
     if (!file.originalname.endsWith('.mrpack')) {
       fs.unlinkSync(file.path);
-      return next(Object.assign(new Error('Only .mrpack files are accepted'), { status: 400 }));
+      return next(new ApiError('Only .mrpack files are accepted', 400));
     }
 
     const id = nanoid(10);
@@ -100,7 +101,7 @@ router.post('/import-mrpack', upload.single('export'), async (req: Request, res:
       mcVersion: result.mcVersion,
       port,
       memoryMb,
-      jvmFlags: '-XX:+UseG1GC -XX:+ParallelRefProcEnabled -XX:MaxGCPauseMillis=200',
+      jvmFlags: DEFAULT_JVM_FLAGS,
       javaVersion,
       rconPassword: nanoid(24),
       hostDirectory,
@@ -215,7 +216,7 @@ router.get('/modpacks/estimate-memory', async (req: Request, res: Response, next
   try {
     const url = (req.query.url as string) ?? '';
     if (!url.startsWith('https://cdn.modrinth.com/')) {
-      return next(Object.assign(new Error('Only Modrinth CDN URLs accepted'), { status: 400 }));
+      return next(new ApiError('Only Modrinth CDN URLs accepted', 400));
     }
 
     const tmpPath = path.join(os.tmpdir(), `mrpack-est-${nanoid(8)}.mrpack`);
@@ -247,9 +248,9 @@ router.post('/install-from-url', (req: Request, res: Response, next: NextFunctio
       packUrl: string; name?: string; port?: number; memoryMb?: number; javaVersion?: string;
       projectId?: string; versionId?: string;
     };
-    if (!packUrl) return next(Object.assign(new Error('packUrl is required'), { status: 400 }));
+    if (!packUrl) return next(new ApiError('packUrl is required', 400));
     if (!packUrl.startsWith('https://cdn.modrinth.com/')) {
-      return next(Object.assign(new Error('Only Modrinth CDN URLs are accepted'), { status: 400 }));
+      return next(new ApiError('Only Modrinth CDN URLs are accepted', 400));
     }
 
     // Parse projectId and versionId from CDN URL:
@@ -278,12 +279,12 @@ router.post('/install-from-url', (req: Request, res: Response, next: NextFunctio
 
 // Install a CurseForge modpack by project + file ID — enqueues a background job
 router.post('/install-from-curseforge', (req: Request, res: Response, next: NextFunction) => {
-  if (!cfEnabled()) return next(Object.assign(new Error('CurseForge API key not configured'), { status: 503 }));
+  if (!cfEnabled()) return next(new ApiError('CurseForge API key not configured', 503));
   try {
     const { projectId, fileId, name, port, memoryMb, javaVersion } = req.body as {
       projectId: number; fileId: number; name?: string; port?: number; memoryMb?: number; javaVersion?: string;
     };
-    if (!projectId || !fileId) return next(Object.assign(new Error('projectId and fileId are required'), { status: 400 }));
+    if (!projectId || !fileId) return next(new ApiError('projectId and fileId are required', 400));
 
     const job = enqueueInstallCurseForge({ projectId, fileId, name, port, memoryMb, javaVersion });
     res.status(202).json({ success: true, data: { jobId: job.id } });

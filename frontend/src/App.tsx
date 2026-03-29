@@ -1,13 +1,14 @@
 import { Routes, Route, Navigate } from 'react-router-dom';
-import { useEffect, useState } from 'react';
+import { useEffect, useState, lazy, Suspense } from 'react';
 import Layout from './components/layout/Layout';
-import Dashboard from './pages/Dashboard';
-import ServerDetail from './pages/ServerDetail';
-import CreateServer from './pages/CreateServer';
-import ImportPrism from './pages/ImportPrism';
-import ImportBackup from './pages/ImportBackup';
 import Login from './pages/Login';
 import JobsPanel from './components/JobsPanel';
+
+const Dashboard    = lazy(() => import('./pages/Dashboard'));
+const ServerDetail = lazy(() => import('./pages/ServerDetail'));
+const CreateServer = lazy(() => import('./pages/CreateServer'));
+const ImportPrism  = lazy(() => import('./pages/ImportPrism'));
+const ImportBackup = lazy(() => import('./pages/ImportBackup'));
 import { initWs, onWsConnect } from './hooks/useServerSocket';
 import { useServersStore } from './stores/serversStore';
 import { useJobStore } from './stores/jobStore';
@@ -79,16 +80,18 @@ export default function App() {
 
   return (
     <>
-      <Routes>
-        <Route path="/login" element={<Navigate to="/" replace />} />
-        <Route element={<Layout />}>
-          <Route index element={<Dashboard />} />
-          <Route path="servers/new" element={<CreateServer />} />
-          <Route path="servers/import" element={<ImportPrism />} />
-          <Route path="servers/import-backup" element={<ImportBackup />} />
-          <Route path="servers/:id/*" element={<ServerDetail />} />
-        </Route>
-      </Routes>
+      <Suspense fallback={<div className="min-h-screen bg-mc-dark" />}>
+        <Routes>
+          <Route path="/login" element={<Navigate to="/" replace />} />
+          <Route element={<Layout />}>
+            <Route index element={<Dashboard />} />
+            <Route path="servers/new" element={<CreateServer />} />
+            <Route path="servers/import" element={<ImportPrism />} />
+            <Route path="servers/import-backup" element={<ImportBackup />} />
+            <Route path="servers/:id/*" element={<ServerDetail />} />
+          </Route>
+        </Routes>
+      </Suspense>
       <JobsPanel />
     </>
   );

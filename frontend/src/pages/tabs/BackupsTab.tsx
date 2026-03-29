@@ -57,6 +57,23 @@ function fmtRelative(isoStr: string): string {
   return 'just now';
 }
 
+function Toggle({ enabled, onChange, disabled }: { enabled: boolean; onChange: () => void; disabled?: boolean }) {
+  return (
+    <button
+      type="button"
+      onClick={onChange}
+      disabled={disabled}
+      className={`relative inline-flex h-5 w-9 flex-shrink-0 rounded-full border-2 transition-colors duration-200 focus:outline-none disabled:opacity-50 ${
+        enabled ? 'border-mc-green bg-mc-green' : 'border-mc-border bg-mc-border/40'
+      }`}
+    >
+      <span className={`inline-block h-3.5 w-3.5 transform rounded-full bg-white shadow transition-transform duration-200 ${
+        enabled ? 'translate-x-3.5' : 'translate-x-0.5'
+      } mt-[1px]`} />
+    </button>
+  );
+}
+
 function CopyButton({ text }: { text: string }) {
   const [copied, setCopied] = useState(false);
   function copy() {
@@ -256,6 +273,8 @@ export default function BackupsTab({ serverId }: { serverId: string }) {
   const [savingSchedule, setSavingSchedule] = useState(false);
   const [scheduleSaved, setScheduleSaved] = useState(false);
   const [successToast, setSuccessToast] = useState<string | null>(null);
+  const [confirmRestoreId, setConfirmRestoreId] = useState<string | null>(null);
+  const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
   const [announceEnabled, setAnnounceEnabled] = useState(false);
   const [announceMessage, setAnnounceMessage] = useState('World save starting, expect brief lag…');
 
@@ -334,11 +353,8 @@ export default function BackupsTab({ serverId }: { serverId: string }) {
   }
 
   async function restore(backup: Backup) {
-    const typeLabel = backup.type === 'world' ? 'world data only' : 'entire server directory';
-    if (!confirm(
-      `Restore "${backup.label}"?\n\nThis will restore ${typeLabel}. ` +
-      `The server will stop, files will be replaced, then restart if it was running.`
-    )) return;
+    if (confirmRestoreId !== backup.id) { setConfirmRestoreId(backup.id); setConfirmDeleteId(null); return; }
+    setConfirmRestoreId(null);
     setRestoring(backup.id);
     setError('');
     setRestoreSuccess(null);
@@ -373,7 +389,8 @@ export default function BackupsTab({ serverId }: { serverId: string }) {
   }
 
   async function remove(id: string) {
-    if (!confirm('Delete this backup?')) return;
+    if (confirmDeleteId !== id) { setConfirmDeleteId(id); setConfirmRestoreId(null); return; }
+    setConfirmDeleteId(null);
     try {
       await api.delete(`/servers/${serverId}/backups/${id}`);
       load();
@@ -431,17 +448,11 @@ export default function BackupsTab({ serverId }: { serverId: string }) {
             <span className="text-sm font-medium text-gray-300">Auto-backup</span>
             {scheduleSaved && <span className="text-xs text-mc-green font-medium">Saved ✓</span>}
           </div>
-          <button
-            onClick={() => saveSchedule({ backupEnabled: !schedule.backupEnabled })}
+          <Toggle
+            enabled={schedule.backupEnabled}
+            onChange={() => saveSchedule({ backupEnabled: !schedule.backupEnabled })}
             disabled={savingSchedule}
-            className={`text-xs px-3 py-1.5 rounded border transition-colors ${
-              schedule.backupEnabled
-                ? 'border-mc-green bg-mc-green/10 text-mc-green'
-                : 'border-mc-border text-mc-muted hover:border-gray-500'
-            }`}
-          >
-            {schedule.backupEnabled ? 'Enabled' : 'Disabled'}
-          </button>
+          />
         </div>
 
         {schedule.backupEnabled && (
@@ -530,23 +541,14 @@ export default function BackupsTab({ serverId }: { serverId: string }) {
         </div>
 
         <div className="flex items-center gap-2">
-          <button
-            type="button"
-            onClick={() => setAnnounceEnabled(v => !v)}
-            className={`text-xs px-2.5 py-1.5 rounded border transition-colors flex-shrink-0 ${
-              announceEnabled
-                ? 'border-mc-green bg-mc-green/10 text-mc-green'
-                : 'border-mc-border text-mc-muted hover:border-gray-500'
-            }`}
-          >
-            Announce
-          </button>
+          <Toggle enabled={announceEnabled} onChange={() => setAnnounceEnabled(v => !v)} />
+          <span className="text-xs text-mc-muted">Announce in-game</span>
           {announceEnabled && (
             <input
               className="input flex-1 text-xs py-1.5"
               value={announceMessage}
               onChange={e => setAnnounceMessage(e.target.value)}
-              placeholder="Message to broadcast in-game…"
+              placeholder="Message to broadcast…"
             />
           )}
         </div>
@@ -614,29 +616,51 @@ export default function BackupsTab({ serverId }: { serverId: string }) {
                   </td>
                   <td className="px-4 py-2.5">
                     <div className="flex items-center gap-0.5 justify-end">
-                      <a
-                        href={`/api/servers/${serverId}/backups/${b.id}/download`}
-                        download
-                        className="p-1.5 rounded hover:bg-mc-border text-mc-muted hover:text-gray-300 transition-colors"
-                        title="Download"
-                      >
-                        <Download size={13} />
-                      </a>
-                      <button
-                        onClick={() => restore(b)}
-                        disabled={restoring === b.id}
-                        className="p-1.5 rounded hover:bg-yellow-900/30 text-mc-muted hover:text-yellow-400 disabled:opacity-40 transition-colors"
-                        title="Restore"
-                      >
-                        <RotateCw size={13} className={restoring === b.id ? 'animate-spin' : ''} />
-                      </button>
-                      <button
-                        onClick={() => remove(b.id)}
-                        className="p-1.5 rounded hover:bg-red-900/30 text-mc-muted hover:text-red-400 transition-colors"
-                        title="Delete"
-                      >
-                        <Trash2 size={13} />
-                      </button>
+                      {confirmRestoreId === b.id ? (
+                        <>
+                          <button onClick={() => restore(b)} className="text-xs text-yellow-400 hover:text-yellow-300 px-1.5 py-0.5 rounded border border-yellow-700/50 hover:bg-yellow-900/30 transition-colors whitespace-nowrap">
+                            Restore?
+                          </button>
+                          <button onClick={() => setConfirmRestoreId(null)} className="p-1 text-mc-muted hover:text-gray-300 transition-colors">
+                            <X size={11} />
+                          </button>
+                        </>
+                      ) : confirmDeleteId === b.id ? (
+                        <>
+                          <button onClick={() => remove(b.id)} className="text-xs text-red-400 hover:text-red-300 px-1.5 py-0.5 rounded border border-red-700/50 hover:bg-red-900/30 transition-colors whitespace-nowrap">
+                            Delete?
+                          </button>
+                          <button onClick={() => setConfirmDeleteId(null)} className="p-1 text-mc-muted hover:text-gray-300 transition-colors">
+                            <X size={11} />
+                          </button>
+                        </>
+                      ) : (
+                        <>
+                          <a
+                            href={`/api/servers/${serverId}/backups/${b.id}/download`}
+                            download
+                            className="p-1.5 rounded hover:bg-mc-border text-mc-muted hover:text-gray-300 transition-colors"
+                            title="Download"
+                          >
+                            <Download size={13} />
+                          </a>
+                          <button
+                            onClick={() => restore(b)}
+                            disabled={restoring === b.id}
+                            className="p-1.5 rounded hover:bg-yellow-900/30 text-mc-muted hover:text-yellow-400 disabled:opacity-40 transition-colors"
+                            title="Restore"
+                          >
+                            <RotateCw size={13} className={restoring === b.id ? 'animate-spin' : ''} />
+                          </button>
+                          <button
+                            onClick={() => remove(b.id)}
+                            className="p-1.5 rounded hover:bg-red-900/30 text-mc-muted hover:text-red-400 transition-colors"
+                            title="Delete"
+                          >
+                            <Trash2 size={13} />
+                          </button>
+                        </>
+                      )}
                     </div>
                   </td>
                 </tr>

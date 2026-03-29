@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { Send, Copy, Check, Trash2, Star, X, Download, Search } from 'lucide-react';
+import { Send, Copy, Check, Trash2, Star, X, Download, Search, ChevronRight } from 'lucide-react';
 import { useConsole } from '../../hooks/useServerSocket';
 import { useServersStore } from '../../stores/serversStore';
 import { api } from '../../api/client';
@@ -7,8 +7,11 @@ import { api } from '../../api/client';
 interface Line { text: string; ts: number; sent?: boolean; }
 
 function colorize(line: string): string {
-  return line
-    .replace(/&lt;/g, '<').replace(/&gt;/g, '>')
+  const escaped = line
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;');
+  return escaped
     .replace(/\[(\w+\s*\/\s*INFO)\]/g, '<span class="text-gray-400">[$1]</span>')
     .replace(/\[(\w+\s*\/\s*WARN)\]/g, '<span class="text-yellow-400">[$1]</span>')
     .replace(/\[(\w+\s*\/\s*ERROR)\]/g, '<span class="text-red-400">[$1]</span>')
@@ -240,7 +243,7 @@ export default function ConsoleTab({ serverId }: { serverId: string }) {
           </span>
         </div>
         <div className="flex items-center gap-2 px-3 py-2">
-          <span className="text-mc-green font-mono text-sm select-none">&gt;</span>
+          <ChevronRight size={14} className="text-mc-green flex-shrink-0" />
           <input
             ref={inputRef}
             className="flex-1 bg-transparent text-sm font-mono text-gray-100 outline-none placeholder-mc-muted"

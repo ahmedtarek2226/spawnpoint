@@ -1,3 +1,4 @@
+import { ApiError } from '../errors';
 import { Router, Request, Response, NextFunction } from 'express';
 import fs from 'fs';
 import path from 'path';
@@ -19,7 +20,7 @@ function readJson<T>(filePath: string): T[] {
 router.get('/', (req: Request, res: Response, next: NextFunction) => {
   try {
     const server = getServer(req.params.id);
-    if (!server) return next(Object.assign(new Error('Server not found'), { status: 404 }));
+    if (!server) return next(new ApiError('Server not found', 404));
 
     const serverDir = path.join(SERVERS_DIR, server.id);
     const rt = getServerRuntime(server.id);
@@ -45,10 +46,10 @@ async function rconAction(
 ) {
   try {
     const server = getServer(req.params.id);
-    if (!server) return next(Object.assign(new Error('Server not found'), { status: 404 }));
+    if (!server) return next(new ApiError('Server not found', 404));
     const rt = getServerRuntime(server.id);
     if (rt.status !== 'running') {
-      return next(Object.assign(new Error('Server is not running'), { status: 409 }));
+      return next(new ApiError('Server is not running', 409));
     }
     const cmd = buildCommand(req.body as Record<string, string>);
     await sendCommand(server, cmd);

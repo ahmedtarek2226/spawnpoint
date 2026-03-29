@@ -5,8 +5,9 @@ import fs from 'fs';
 import { nanoid } from 'nanoid';
 import { createServer } from '../models/Server';
 import { restoreBackupArchive, detectModpackInfo } from '../services/BackupService';
-import { SERVERS_DIR } from '../config';
+import { SERVERS_DIR, DEFAULT_JVM_FLAGS } from '../config';
 import { getHostDataDir } from '../services/hostDataDir';
+import { ApiError } from '../errors';
 
 const router = Router();
 const upload = multer({ dest: '/tmp/mc-backup-imports/' });
@@ -22,10 +23,10 @@ const LOADER_TO_TYPE: Record<string, string> = {
 router.post('/import-as-server', upload.single('backup'), async (req: Request, res: Response, next: NextFunction) => {
   try {
     const file = req.file;
-    if (!file) return next(Object.assign(new Error('No file uploaded'), { status: 400 }));
+    if (!file) return next(new ApiError('No file uploaded', 400));
     if (!file.originalname.endsWith('.tar.gz')) {
       fs.unlinkSync(file.path);
-      return next(Object.assign(new Error('Only .tar.gz backup files are accepted'), { status: 400 }));
+      return next(new ApiError('Only .tar.gz backup files are accepted', 400));
     }
 
     const id = nanoid(10);
@@ -53,7 +54,7 @@ router.post('/import-as-server', upload.single('backup'), async (req: Request, r
       mcVersion,
       port,
       memoryMb,
-      jvmFlags: '-XX:+UseG1GC -XX:+ParallelRefProcEnabled -XX:MaxGCPauseMillis=200',
+      jvmFlags: DEFAULT_JVM_FLAGS,
       javaVersion,
       rconPassword: nanoid(24),
       hostDirectory,

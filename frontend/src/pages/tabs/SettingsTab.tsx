@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Save, Copy, X, Plus, RefreshCw, Eye, EyeOff, Package, ChevronDown, ChevronUp, Loader2, CheckCircle2, AlertCircle, Cpu, Shield, Bell, Server as ServerIcon, Tag, Info, HardDrive, Trash2 } from 'lucide-react';
+import { Save, Copy, X, Plus, Package, ChevronDown, ChevronUp, Loader2, CheckCircle2, AlertCircle, HardDrive, Trash2 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { api } from '../../api/client';
 import { useServersStore, type Server } from '../../stores/serversStore';
@@ -62,35 +62,40 @@ function fmtRelDate(iso: string): string {
   return `${Math.floor(months / 12)}y ago`;
 }
 
-// ── section card shell ────────────────────────────────────────────────────────
+// ── row layout ────────────────────────────────────────────────────────────────
 
-function SectionCard({
-  icon,
-  title,
-  accent,
-  children,
-}: {
-  icon: React.ReactNode;
-  title: string;
-  accent: string;
-  children: React.ReactNode;
-}) {
+function SettingRow({ label, hint, children }: { label: string; hint?: string; children: React.ReactNode }) {
   return (
-    <div className={`card p-0 overflow-hidden border-l-2 ${accent}`}>
-      <div className="flex items-center gap-2 px-4 pt-3.5 pb-2.5 border-b border-mc-border/60">
-        <span className="text-mc-muted">{icon}</span>
-        <span className="text-[10px] font-semibold tracking-widest uppercase text-mc-muted">{title}</span>
+    <div className="grid grid-cols-2 gap-x-8 gap-y-1 py-3.5 border-b border-mc-border/30 last:border-0 items-start">
+      <div>
+        <div className="text-sm text-gray-300">{label}</div>
+        {hint && <div className="text-xs text-mc-muted mt-0.5 leading-snug">{hint}</div>}
       </div>
-      <div className="p-4 space-y-4">
-        {children}
-      </div>
+      <div>{children}</div>
     </div>
   );
 }
 
-// ── modpack section ───────────────────────────────────────────────────────────
+const SECTION_COLORS: Record<string, string> = {
+  General: 'text-mc-green',
+  Performance: 'text-blue-400',
+  Modpack: 'text-emerald-400',
+  'Danger Zone': 'text-red-400',
+};
 
-function ModpackSection({ server }: { server: Server }) {
+function SectionHeader({ label }: { label: string }) {
+  const color = SECTION_COLORS[label] ?? 'text-mc-muted';
+  return (
+    <div className="flex items-center gap-3 pt-6 pb-1 first:pt-2">
+      <span className={`text-[10px] font-semibold tracking-widest uppercase whitespace-nowrap ${color}`}>{label}</span>
+      <div className="flex-1 h-px bg-mc-border/40" />
+    </div>
+  );
+}
+
+// ── modpack versions ──────────────────────────────────────────────────────────
+
+function ModpackVersions({ server }: { server: Server }) {
   const setServers = useServersStore((s) => s.setServers);
   const upsertJob = useJobStore((s) => s.upsertJob);
   const jobs = useJobStore((s) => s.jobs);
@@ -103,8 +108,6 @@ function ModpackSection({ server }: { server: Server }) {
 
   const updateJob: JobRecord | null = updateJobId ? (jobs.find(j => j.id === updateJobId) ?? null) : null;
   const updating = updateJob ? (updateJob.status === 'running' || updateJob.status === 'queued') : false;
-
-  if (!server.modpackSource) return null;
 
   useEffect(() => {
     if (!updateJob) return;
@@ -145,28 +148,15 @@ function ModpackSection({ server }: { server: Server }) {
   const isModrinth = server.modpackSource === 'modrinth';
 
   return (
-    <SectionCard
-      icon={<Package size={13} />}
-      title="Modpack"
-      accent={isModrinth ? 'border-l-emerald-500' : 'border-l-orange-500'}
-    >
-      {/* Pack identity row */}
+    <div className="space-y-3">
+      {/* Pack identity */}
       <div className="flex items-center justify-between gap-3">
-        <div className="min-w-0">
-          <div className="flex items-center gap-2 flex-wrap">
-            <span className="text-sm font-medium text-gray-200 truncate">
-              {server.modpackSlug ?? 'Unknown pack'}
-            </span>
-            {isModrinth
-              ? <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-emerald-900/40 border border-emerald-700/50 text-emerald-400 tracking-wide uppercase font-semibold flex-shrink-0">Modrinth</span>
-              : <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-orange-900/40 border border-orange-700/50 text-orange-400 tracking-wide uppercase font-semibold flex-shrink-0">CurseForge</span>
-            }
-          </div>
-          {server.modpackVersionId && (
-            <div className="text-xs text-mc-muted font-mono mt-0.5">
-              v <span className="text-gray-400">{server.modpackVersionId}</span>
-            </div>
-          )}
+        <div className="flex items-center gap-2 min-w-0">
+          <span className="text-sm text-gray-300 truncate">{server.modpackSlug ?? 'Unknown pack'}</span>
+          {isModrinth
+            ? <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-emerald-900/40 border border-emerald-700/50 text-emerald-400 uppercase tracking-wide font-semibold flex-shrink-0">Modrinth</span>
+            : <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-orange-900/40 border border-orange-700/50 text-orange-400 uppercase tracking-wide font-semibold flex-shrink-0">CurseForge</span>
+          }
         </div>
         <button
           type="button"
@@ -174,15 +164,15 @@ function ModpackSection({ server }: { server: Server }) {
           onClick={open ? () => setOpen(false) : checkVersions}
           disabled={loading || updating}
         >
-          {loading
-            ? <Loader2 size={12} className="animate-spin" />
-            : open ? <ChevronUp size={12} /> : <ChevronDown size={12} />
-          }
-          {open ? 'Hide versions' : 'Check for updates'}
+          {loading ? <Loader2 size={12} className="animate-spin" /> : open ? <ChevronUp size={12} /> : <ChevronDown size={12} />}
+          {open ? 'Hide' : 'Check updates'}
         </button>
       </div>
 
-      {/* Job progress */}
+      {server.modpackVersionId && (
+        <div className="text-xs text-mc-muted font-mono">Current: <span className="text-gray-400">{server.modpackVersionId}</span></div>
+      )}
+
       {updateJob && (
         <div className={`rounded-md p-3 text-sm border ${updateJob.status === 'failed' ? 'bg-red-950/40 border-red-800/40' : 'bg-mc-dark border-mc-border'}`}>
           {updating ? (
@@ -197,62 +187,35 @@ function ModpackSection({ server }: { server: Server }) {
               </div>
             </div>
           ) : updateJob.status === 'done' ? (
-            <div className="flex items-center gap-2 text-green-400 text-xs">
-              <CheckCircle2 size={12} />
-              Update applied successfully.
-            </div>
+            <div className="flex items-center gap-2 text-green-400 text-xs"><CheckCircle2 size={12} /> Update applied successfully.</div>
           ) : (
-            <div className="flex items-start gap-2 text-red-400 text-xs">
-              <AlertCircle size={12} className="mt-0.5 flex-shrink-0" />
-              {updateJob.error ?? 'Update failed'}
-            </div>
+            <div className="flex items-start gap-2 text-red-400 text-xs"><AlertCircle size={12} className="mt-0.5 flex-shrink-0" />{updateJob.error ?? 'Update failed'}</div>
           )}
         </div>
       )}
 
-      {updateError && (
-        <div className="bg-red-900/20 border border-red-800/50 text-red-400 rounded-md px-3 py-2 text-xs">{updateError}</div>
-      )}
-      {fetchError && (
-        <div className="bg-red-900/20 border border-red-800/50 text-red-400 rounded-md px-3 py-2 text-xs">{fetchError}</div>
-      )}
+      {updateError && <div className="bg-red-900/20 border border-red-800/50 text-red-400 rounded-md px-3 py-2 text-xs">{updateError}</div>}
+      {fetchError && <div className="bg-red-900/20 border border-red-800/50 text-red-400 rounded-md px-3 py-2 text-xs">{fetchError}</div>}
 
-      {/* Version list */}
       {open && data && data.versions.length > 0 && (
-        <div className="overflow-y-auto max-h-64 rounded-md border border-mc-border bg-mc-dark divide-y divide-mc-border/60">
+        <div className="overflow-y-auto max-h-56 rounded-md border border-mc-border bg-mc-dark divide-y divide-mc-border/60">
           {data.versions.map((v, idx) => {
             const currentIdx = data.versions.findIndex(x => x.isCurrent);
             const isNewer = currentIdx === -1 || idx < currentIdx;
             return (
-              <div
-                key={v.id}
-                className={`flex items-center gap-3 px-3 py-2 text-xs transition-colors ${v.isCurrent ? 'bg-green-950/30' : 'hover:bg-mc-panel/40'}`}
-              >
+              <div key={v.id} className={`flex items-center gap-3 px-3 py-2 text-xs transition-colors ${v.isCurrent ? 'bg-green-950/30' : 'hover:bg-mc-panel/40'}`}>
                 <div className="min-w-0 flex-1 space-y-0.5">
                   <div className="flex items-center gap-2 flex-wrap">
                     <span className="text-gray-200 truncate">{v.name}</span>
-                    {v.isCurrent && (
-                      <span className="text-[10px] px-1.5 py-px rounded-full bg-green-900/40 border border-green-700/50 text-green-400 flex-shrink-0 uppercase tracking-wide font-semibold">current</span>
-                    )}
-                    {!v.isCurrent && isNewer && (
-                      <span className="text-[10px] px-1.5 py-px rounded-full bg-blue-900/30 border border-blue-800/40 text-blue-400 flex-shrink-0">newer</span>
-                    )}
+                    {v.isCurrent && <span className="text-[10px] px-1.5 py-px rounded-full bg-green-900/40 border border-green-700/50 text-green-400 flex-shrink-0 uppercase tracking-wide font-semibold">current</span>}
+                    {!v.isCurrent && isNewer && <span className="text-[10px] px-1.5 py-px rounded-full bg-blue-900/30 border border-blue-800/40 text-blue-400 flex-shrink-0">newer</span>}
                   </div>
                   <div className="text-mc-muted">{fmtRelDate(v.datePublished)}</div>
                 </div>
                 {!v.isCurrent && (
-                  v.downloadAvailable ? (
-                    <button
-                      type="button"
-                      className={`btn-ghost text-xs px-2.5 py-1 flex-shrink-0 transition-colors ${isNewer ? 'text-mc-green hover:bg-mc-green/10' : 'hover:bg-white/5'}`}
-                      onClick={() => applyUpdate(v.id)}
-                      disabled={updating}
-                    >
-                      {isNewer ? 'Update' : 'Downgrade'}
-                    </button>
-                  ) : (
-                    <span className="text-mc-muted text-xs flex-shrink-0 italic">unavailable</span>
-                  )
+                  v.downloadAvailable
+                    ? <button type="button" className={`btn-ghost text-xs px-2.5 py-1 flex-shrink-0 ${isNewer ? 'text-mc-green hover:bg-mc-green/10' : 'hover:bg-white/5'}`} onClick={() => applyUpdate(v.id)} disabled={updating}>{isNewer ? 'Update' : 'Downgrade'}</button>
+                    : <span className="text-mc-muted text-xs flex-shrink-0 italic">unavailable</span>
                 )}
               </div>
             );
@@ -262,7 +225,7 @@ function ModpackSection({ server }: { server: Server }) {
       {open && data && data.versions.length === 0 && !loading && (
         <p className="text-xs text-mc-muted">No versions found.</p>
       )}
-    </SectionCard>
+    </div>
   );
 }
 
@@ -278,10 +241,7 @@ export default function SettingsTab({ server }: { server: Server }) {
     jvmFlags: server.jvmFlags,
     javaVersion: server.javaVersion ?? '21',
     tags: server.tags ?? [] as string[],
-    rconPassword: (server as unknown as Record<string, string>).rconPassword ?? '',
-    discordWebhookUrl: (server as unknown as Record<string, string | null>).discordWebhookUrl ?? '',
   });
-  const [showRcon, setShowRcon] = useState(false);
   const [tagInput, setTagInput] = useState('');
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
@@ -290,7 +250,7 @@ export default function SettingsTab({ server }: { server: Server }) {
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [diskUsage, setDiskUsage] = useState<DiskUsage | null>(null);
-  const [versionCheck, setVersionCheck] = useState<VersionCheck | null>(null);
+  const [, setVersionCheck] = useState<VersionCheck | null>(null);
 
   useEffect(() => {
     api.get<DiskUsage>(`/servers/${server.id}/disk-usage`).then(setDiskUsage).catch(() => {});
@@ -318,7 +278,7 @@ export default function SettingsTab({ server }: { server: Server }) {
 
   function addTag() {
     const t = tagInput.trim().toLowerCase().replace(/\s+/g, '-');
-    if (t && !form.tags.includes(t)) { set('tags', [...form.tags, t]); }
+    if (t && !form.tags.includes(t)) set('tags', [...form.tags, t]);
     setTagInput('');
   }
 
@@ -327,55 +287,50 @@ export default function SettingsTab({ server }: { server: Server }) {
   const javaWarning = javaSuggested && selectedBase !== javaSuggested;
 
   return (
-    <div className="p-6">
-      <form onSubmit={save}>
-        {/* Two-column grid for main settings */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 max-w-4xl">
+    <div className="flex flex-col h-full">
+
+      {/* Stats strip */}
+      <div className="flex items-center border-b border-mc-border bg-mc-panel/30 flex-shrink-0 overflow-x-auto scrollbar-none">
+        <StatChip label="Type" value={<span className="capitalize">{server.type}</span>} color="text-mc-green" />
+        <StatChip label="MC" value={server.mcVersion} color="text-blue-400" />
+        <StatChip label="Created" value={new Date(server.createdAt).toLocaleDateString()} />
+        {diskUsage ? (
+          <>
+            <StatChip label="Server Files" value={fmtBytes(diskUsage.serverFiles)} icon={<HardDrive size={10} />} color="text-purple-400" />
+            <StatChip label="Backups" value={fmtBytes(diskUsage.backups)} icon={<HardDrive size={10} />} color="text-purple-400" />
+          </>
+        ) : (
+          <StatChip label="Disk" value="Loading…" />
+        )}
+      </div>
+
+      {/* Scrollable form */}
+      <div className="flex-1 overflow-y-auto">
+        <form onSubmit={save} className="max-w-2xl mx-auto px-6 pb-24 pt-2">
 
           {/* ── General ──────────────────────────────────────── */}
-          <SectionCard icon={<ServerIcon size={13} />} title="General" accent="border-l-mc-green">
-            <div>
-              <label className="label">Server Name</label>
-              <input
-                className="input"
-                value={form.name}
-                onChange={e => set('name', e.target.value)}
-                required
-              />
-            </div>
-            <div>
-              <label className="label">Port</label>
-              <input
-                className="input"
-                type="number"
-                min={1}
-                max={65535}
-                value={form.port}
-                onChange={e => set('port', parseInt(e.target.value))}
-              />
-              <p className="text-xs text-mc-muted mt-1">Requires restart to take effect.</p>
-            </div>
+          <SectionHeader label="General" />
 
-            {/* Tags */}
-            <div>
-              <label className="label flex items-center gap-1.5">
-                <Tag size={11} className="text-mc-muted" />
-                Tags
-              </label>
+          <SettingRow label="Name" hint="Displayed in the dashboard and header.">
+            <input className="input w-full" value={form.name} onChange={e => set('name', e.target.value)} required />
+          </SettingRow>
+
+          <SettingRow label="Port" hint="TCP port the server listens on. Requires restart.">
+            <input className="input w-full" type="number" min={1} max={65535} value={form.port} onChange={e => set('port', parseInt(e.target.value))} />
+          </SettingRow>
+
+          <SettingRow label="Tags" hint="Filter servers on the dashboard. Enter or comma to add.">
+            <div className="space-y-2">
               {form.tags.length > 0 && (
-                <div className="flex flex-wrap gap-1.5 mb-2">
+                <div className="flex flex-wrap gap-1.5">
                   {form.tags.map((tag) => (
                     <span
                       key={tag}
-                      className="inline-flex items-center gap-1 text-xs px-2.5 py-1 rounded-full border font-medium"
+                      className="inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-full border font-medium"
                       style={{ borderColor: tagColor(tag), color: tagColor(tag), backgroundColor: tagColor(tag) + '18' }}
                     >
                       {tag}
-                      <button
-                        type="button"
-                        onClick={() => set('tags', form.tags.filter((t: string) => t !== tag))}
-                        className="opacity-50 hover:opacity-100 transition-opacity ml-0.5"
-                      >
+                      <button type="button" onClick={() => set('tags', form.tags.filter((t: string) => t !== tag))} className="opacity-50 hover:opacity-100 transition-opacity">
                         <X size={9} />
                       </button>
                     </span>
@@ -388,283 +343,144 @@ export default function SettingsTab({ server }: { server: Server }) {
                   placeholder="Add tag…"
                   value={tagInput}
                   onChange={e => setTagInput(e.target.value)}
-                  onKeyDown={e => {
-                    if ((e.key === 'Enter' || e.key === ',') && tagInput.trim()) {
-                      e.preventDefault();
-                      addTag();
-                    }
-                  }}
+                  onKeyDown={e => { if ((e.key === 'Enter' || e.key === ',') && tagInput.trim()) { e.preventDefault(); addTag(); } }}
                 />
-                <button type="button" className="btn-ghost px-3 flex-shrink-0" onClick={addTag}>
-                  <Plus size={13} />
-                </button>
+                <button type="button" className="btn-ghost px-3 flex-shrink-0" onClick={addTag}><Plus size={13} /></button>
               </div>
-              <p className="text-xs text-mc-muted mt-1">Enter or comma to add. Filters on dashboard.</p>
             </div>
-          </SectionCard>
+          </SettingRow>
 
           {/* ── Performance ──────────────────────────────────── */}
-          <SectionCard icon={<Cpu size={13} />} title="Performance" accent="border-l-blue-500">
-            <div>
-              <label className="label">Memory (MB)</label>
-              <input
-                className="input"
-                type="number"
-                min={512}
-                step={512}
-                value={form.memoryMb}
-                onChange={e => set('memoryMb', parseInt(e.target.value))}
-              />
-              <p className="text-xs text-mc-muted mt-1">Requires restart. 4096+ MB recommended for modpacks.</p>
-            </div>
+          <SectionHeader label="Performance" />
 
-            <div>
-              <label className="label">Java Version</label>
-              <select
-                className="input"
-                value={form.javaVersion}
-                onChange={e => set('javaVersion', e.target.value)}
-              >
+          <SettingRow label="Memory" hint="Heap size in MB. Requires restart. 4096+ MB recommended for modpacks.">
+            <div className="flex items-center gap-2">
+              <input className="input flex-1" type="number" min={512} step={512} value={form.memoryMb} onChange={e => set('memoryMb', parseInt(e.target.value))} />
+              <span className="text-xs text-mc-muted flex-shrink-0">MB</span>
+            </div>
+          </SettingRow>
+
+          <SettingRow label="Java Version" hint={javaWarning ? undefined : 'Requires restart.'}>
+            <div className="space-y-1.5">
+              <select className="input w-full" value={form.javaVersion} onChange={e => set('javaVersion', e.target.value)}>
                 {JAVA_VERSIONS.map(j => <option key={j.value} value={j.value}>{j.label}</option>)}
               </select>
-              {javaWarning ? (
-                <p className="text-xs text-yellow-400 mt-1">
+              {javaWarning && (
+                <p className="text-xs text-yellow-400">
                   MC {server.mcVersion} recommends Java {javaSuggested}.{' '}
-                  <button
-                    type="button"
-                    className="underline hover:text-yellow-300 transition-colors"
-                    onClick={() => set('javaVersion', javaSuggested!)}
-                  >
-                    Switch
-                  </button>
+                  <button type="button" className="underline hover:text-yellow-300 transition-colors" onClick={() => set('javaVersion', javaSuggested!)}>Switch</button>
                 </p>
-              ) : (
-                <p className="text-xs text-mc-muted mt-1">Requires restart.</p>
               )}
             </div>
+          </SettingRow>
 
-            <div>
-              <label className="label">JVM Flags</label>
-              <input
-                className="input font-mono text-xs"
-                value={form.jvmFlags}
-                onChange={e => set('jvmFlags', e.target.value)}
-              />
-              <p className="text-xs text-mc-muted mt-1">Advanced: garbage collection and memory tuning.</p>
-            </div>
-          </SectionCard>
+          <SettingRow label="JVM Flags" hint="Advanced garbage collection and memory tuning flags.">
+            <input className="input w-full font-mono text-xs" value={form.jvmFlags} onChange={e => set('jvmFlags', e.target.value)} />
+          </SettingRow>
 
-          {/* ── Security ─────────────────────────────────────── */}
-          <SectionCard icon={<Shield size={13} />} title="Security" accent="border-l-yellow-500">
-            <div>
-              <label className="label">RCON Password</label>
-              <div className="flex gap-2">
-                <div className="relative flex-1">
-                  <input
-                    className="input w-full font-mono pr-8 text-sm"
-                    type={showRcon ? 'text' : 'password'}
-                    value={form.rconPassword}
-                    onChange={e => set('rconPassword', e.target.value)}
-                  />
-                  <button
-                    type="button"
-                    className="absolute right-2.5 top-1/2 -translate-y-1/2 text-mc-muted hover:text-gray-300 transition-colors"
-                    onClick={() => setShowRcon((v) => !v)}
-                  >
-                    {showRcon ? <EyeOff size={13} /> : <Eye size={13} />}
-                  </button>
+          {/* ── Modpack ──────────────────────────────────────── */}
+          {server.modpackSource && (
+            <>
+              <SectionHeader label="Modpack" />
+              <div className="py-3">
+                <ModpackVersions server={server} />
+              </div>
+            </>
+          )}
+
+          {/* ── Danger Zone ──────────────────────────────────── */}
+          <SectionHeader label="Danger Zone" />
+
+          <div className="py-3">
+            {!confirmDelete ? (
+              <div className="flex items-center justify-between gap-4">
+                <div>
+                  <p className="text-sm text-gray-300">Delete this server</p>
+                  <p className="text-xs text-mc-muted mt-0.5">Permanently removes all files, worlds, and configuration.</p>
                 </div>
-                <button
-                  type="button"
-                  className="btn-ghost px-3 flex-shrink-0"
-                  title="Generate new password"
-                  onClick={() => set('rconPassword', Array.from(crypto.getRandomValues(new Uint8Array(18))).map(b => b.toString(36)).join('').slice(0, 24))}
-                >
-                  <RefreshCw size={13} />
+                <button type="button" onClick={() => setConfirmDelete(true)} className="btn-danger text-sm flex-shrink-0">
+                  <Trash2 size={13} /> Delete
                 </button>
               </div>
-              <p className="text-xs text-mc-muted mt-1">Requires restart. Updates <code className="font-mono">server.properties</code> if it exists.</p>
-            </div>
-          </SectionCard>
-
-          {/* ── Integrations ─────────────────────────────────── */}
-          <SectionCard icon={<Bell size={13} />} title="Integrations" accent="border-l-purple-500">
-            <div>
-              <label className="label">Discord Webhook URL</label>
-              <input
-                className="input text-sm"
-                type="url"
-                placeholder="https://discord.com/api/webhooks/…"
-                value={form.discordWebhookUrl ?? ''}
-                onChange={e => set('discordWebhookUrl', e.target.value)}
-              />
-              <p className="text-xs text-mc-muted mt-1">
-                Notifications for server start, stop, crash, player joins, and backups.
-              </p>
-            </div>
-          </SectionCard>
-        </div>
-
-        {/* ── Modpack (full width, conditional) ────────────── */}
-        {server.modpackSource && (
-          <div className="max-w-4xl mt-4">
-            <ModpackSection server={server} />
-          </div>
-        )}
-
-        {/* ── Server Info strip ─────────────────────────────── */}
-        <div className="max-w-4xl mt-4">
-          <div className="card p-0 overflow-hidden border-l-2 border-l-slate-600">
-            <div className="flex items-center gap-2 px-4 pt-3.5 pb-2.5 border-b border-mc-border/60">
-              <Info size={13} className="text-mc-muted" />
-              <span className="text-[10px] font-semibold tracking-widest uppercase text-mc-muted">Server Info</span>
-            </div>
-            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-0 divide-x divide-y divide-mc-border/40">
-              <InfoCell label="Type" value={<span className="capitalize">{server.type}</span>} />
-              <InfoCell label="MC Version" value={server.mcVersion} />
-              <InfoCell label="Created" value={new Date(server.createdAt).toLocaleDateString()} />
-              {diskUsage ? (
-                <InfoCell label="Disk Usage" value={
-                  <span className="flex items-center gap-1.5">
-                    <HardDrive size={11} className="text-mc-muted flex-shrink-0" />
-                    {fmtBytes(diskUsage.total)}
-                  </span>
-                } />
-              ) : (
-                <InfoCell label="Disk Usage" value={<span className="text-mc-muted">Loading…</span>} />
-              )}
-              {diskUsage && (
-                <>
-                  <InfoCell label="Server Files" value={fmtBytes(diskUsage.serverFiles)} />
-                  <InfoCell label="Backups" value={fmtBytes(diskUsage.backups)} />
-                </>
-              )}
-            </div>
-          </div>
-        </div>
-
-        {/* ── Error ─────────────────────────────────────────── */}
-        {error && (
-          <div className="max-w-4xl mt-4 bg-red-900/20 border border-red-800/50 text-red-400 rounded-lg px-4 py-3 text-sm flex items-start gap-2">
-            <AlertCircle size={14} className="mt-0.5 flex-shrink-0" />
-            {error}
-          </div>
-        )}
-
-        {/* ── Danger Zone ───────────────────────────────────── */}
-        <div className="max-w-4xl mt-4">
-          <div className="card p-0 overflow-hidden border-l-2 border-l-red-600">
-            <div className="flex items-center gap-2 px-4 pt-3.5 pb-2.5 border-b border-mc-border/60">
-              <Trash2 size={13} className="text-red-500" />
-              <span className="text-[10px] font-semibold tracking-widest uppercase text-red-500/80">Danger Zone</span>
-            </div>
-            <div className="p-4">
-              {!confirmDelete ? (
-                <div className="flex items-center justify-between gap-4">
-                  <div>
-                    <p className="text-sm text-gray-300 font-medium">Delete this server</p>
-                    <p className="text-xs text-mc-muted mt-0.5">Permanently removes all server files, worlds, and configuration.</p>
-                  </div>
+            ) : (
+              <div className="rounded-md border border-red-800/50 bg-red-950/20 p-4 space-y-3">
+                <p className="text-sm text-red-300">
+                  Delete <span className="font-semibold">{server.name}</span>? This cannot be undone.
+                </p>
+                <div className="flex gap-2">
+                  <button type="button" className="btn-ghost text-sm" onClick={() => setConfirmDelete(false)} disabled={deleting}>Cancel</button>
                   <button
                     type="button"
-                    onClick={() => setConfirmDelete(true)}
-                    className="btn-danger text-sm flex-shrink-0"
+                    className="btn-danger text-sm"
+                    disabled={deleting}
+                    onClick={async () => {
+                      setDeleting(true);
+                      try {
+                        await api.delete(`/servers/${server.id}?wipe=true`);
+                        const updated = await api.get<Server[]>('/servers');
+                        setServers(updated);
+                        navigate('/');
+                      } catch (err: unknown) {
+                        setError(err instanceof Error ? err.message : 'Delete failed');
+                        setDeleting(false);
+                        setConfirmDelete(false);
+                      }
+                    }}
                   >
-                    <Trash2 size={13} /> Delete server
+                    {deleting ? <><Loader2 size={13} className="animate-spin" /> Deleting…</> : 'Yes, delete'}
                   </button>
                 </div>
-              ) : (
-                <div className="space-y-3">
-                  <p className="text-sm text-red-400">
-                    Are you sure you want to delete <span className="font-semibold text-red-300">{server.name}</span>?
-                    This cannot be undone.
-                  </p>
-                  <div className="flex gap-2">
-                    <button
-                      type="button"
-                      className="btn-ghost text-sm"
-                      onClick={() => setConfirmDelete(false)}
-                      disabled={deleting}
-                    >
-                      Cancel
-                    </button>
-                    <button
-                      type="button"
-                      className="btn-danger text-sm"
-                      disabled={deleting}
-                      onClick={async () => {
-                        setDeleting(true);
-                        try {
-                          await api.delete(`/servers/${server.id}?wipe=true`);
-                          const updated = await api.get<Server[]>('/servers');
-                          setServers(updated);
-                          navigate('/');
-                        } catch (err: unknown) {
-                          setError(err instanceof Error ? err.message : 'Delete failed');
-                          setDeleting(false);
-                          setConfirmDelete(false);
-                        }
-                      }}
-                    >
-                      {deleting ? <><Loader2 size={13} className="animate-spin" /> Deleting…</> : 'Yes, delete server'}
-                    </button>
-                  </div>
-                </div>
-              )}
-            </div>
-          </div>
-        </div>
-
-        {/* ── Actions ───────────────────────────────────────── */}
-        <div className="max-w-4xl mt-5 flex items-center gap-3">
-          <button
-            type="submit"
-            className="btn-primary flex items-center gap-2 px-6"
-            disabled={saving}
-          >
-            {saving ? (
-              <><Loader2 size={14} className="animate-spin" /> Saving…</>
-            ) : saved ? (
-              <><CheckCircle2 size={14} /> Saved</>
-            ) : (
-              <><Save size={14} /> Save Settings</>
+              </div>
             )}
-          </button>
+          </div>
 
-          <button
-            type="button"
-            className="btn-ghost flex items-center gap-2"
-            disabled={duplicating}
-            onClick={async () => {
-              setDuplicating(true);
-              try {
-                const copy = await api.post<Server>(`/servers/${server.id}/duplicate`);
-                const servers = await api.get<Server[]>('/servers');
-                setServers(servers);
-                navigate(`/servers/${copy.id}/settings`);
-              } catch (err: unknown) {
-                setError(err instanceof Error ? err.message : 'Duplicate failed');
-              } finally {
-                setDuplicating(false);
-              }
-            }}
-          >
-            {duplicating ? <Loader2 size={13} className="animate-spin" /> : <Copy size={13} />}
-            {duplicating ? 'Duplicating…' : 'Duplicate Server'}
-          </button>
-        </div>
-      </form>
+        </form>
+      </div>
+
+      {/* Sticky save bar */}
+      <div className="flex-shrink-0 border-t border-mc-border bg-mc-panel px-6 py-3 flex items-center gap-3">
+        <button type="submit" form="settings-form" className="btn-primary flex items-center gap-2 px-5" disabled={saving} onClick={save}>
+          {saving ? <><Loader2 size={14} className="animate-spin" /> Saving…</> : saved ? <><CheckCircle2 size={14} /> Saved</> : <><Save size={14} /> Save</>}
+        </button>
+        <button
+          type="button"
+          className="btn-ghost flex items-center gap-2"
+          disabled={duplicating}
+          onClick={async () => {
+            setDuplicating(true);
+            try {
+              const copy = await api.post<Server>(`/servers/${server.id}/duplicate`);
+              const servers = await api.get<Server[]>('/servers');
+              setServers(servers);
+              navigate(`/servers/${copy.id}/settings`);
+            } catch (err: unknown) {
+              setError(err instanceof Error ? err.message : 'Duplicate failed');
+            } finally {
+              setDuplicating(false);
+            }
+          }}
+        >
+          {duplicating ? <Loader2 size={13} className="animate-spin" /> : <Copy size={13} />}
+          {duplicating ? 'Duplicating…' : 'Duplicate'}
+        </button>
+        {error && (
+          <div className="flex items-center gap-1.5 text-xs text-red-400 ml-2">
+            <AlertCircle size={12} /> {error}
+          </div>
+        )}
+      </div>
+
     </div>
   );
 }
 
 // ── helpers ───────────────────────────────────────────────────────────────────
 
-function InfoCell({ label, value }: { label: string; value: React.ReactNode }) {
+function StatChip({ label, value, icon, color = 'text-gray-300' }: { label: string; value: React.ReactNode; icon?: React.ReactNode; color?: string }) {
   return (
-    <div className="px-4 py-3">
-      <div className="text-[10px] font-semibold tracking-widest uppercase text-mc-muted mb-1">{label}</div>
-      <div className="text-sm text-gray-300">{value}</div>
+    <div className="px-4 py-2.5 border-r border-mc-border flex items-center gap-2 flex-shrink-0">
+      <span className="text-[10px] uppercase tracking-widest font-semibold text-mc-muted">{label}</span>
+      <span className={`text-xs flex items-center gap-1 font-medium ${color}`}>{icon}{value}</span>
     </div>
   );
 }
@@ -675,3 +491,4 @@ function tagColor(tag: string): string {
   for (let i = 0; i < tag.length; i++) hash = (hash * 31 + tag.charCodeAt(i)) >>> 0;
   return TAG_PALETTE[hash % TAG_PALETTE.length];
 }
+

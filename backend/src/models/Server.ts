@@ -17,7 +17,6 @@ interface ServerRow {
   backup_interval_hours: number;
   backup_retain_count: number;
   backup_last_at: string | null;
-  discord_webhook_url: string | null;
   modpack_source: string | null;
   modpack_project_id: string | null;
   modpack_version_id: string | null;
@@ -43,7 +42,6 @@ function rowToConfig(row: ServerRow): ServerConfig {
     backupIntervalHours: row.backup_interval_hours ?? 24,
     backupRetainCount: row.backup_retain_count ?? 5,
     backupLastAt: row.backup_last_at ?? null,
-    discordWebhookUrl: row.discord_webhook_url ?? null,
     modpackSource: (row.modpack_source as 'modrinth' | 'curseforge' | null) ?? null,
     modpackProjectId: row.modpack_project_id ?? null,
     modpackVersionId: row.modpack_version_id ?? null,
@@ -62,13 +60,12 @@ export function getServer(id: string): ServerConfig | undefined {
   return row ? rowToConfig(row) : undefined;
 }
 
-export function createServer(config: Omit<ServerConfig, 'createdAt' | 'updatedAt' | 'tags' | 'backupEnabled' | 'backupIntervalHours' | 'backupRetainCount' | 'backupLastAt' | 'discordWebhookUrl'> & {
+export function createServer(config: Omit<ServerConfig, 'createdAt' | 'updatedAt' | 'tags' | 'backupEnabled' | 'backupIntervalHours' | 'backupRetainCount' | 'backupLastAt'> & {
   tags?: string[];
   backupEnabled?: boolean;
   backupIntervalHours?: number;
   backupRetainCount?: number;
   backupLastAt?: string | null;
-  discordWebhookUrl?: string | null;
 }): ServerConfig {
   getDb().query(`
     INSERT INTO servers (id, name, type, mc_version, port, jvm_flags, memory_mb, java_version, rcon_password, host_directory, modpack_source, modpack_project_id, modpack_version_id, modpack_slug)
@@ -95,7 +92,7 @@ export function createServer(config: Omit<ServerConfig, 'createdAt' | 'updatedAt
 type ServerPatch = Partial<Pick<ServerConfig,
   'name' | 'jvmFlags' | 'memoryMb' | 'port' | 'javaVersion' | 'tags' |
   'backupEnabled' | 'backupIntervalHours' | 'backupRetainCount' | 'backupLastAt' |
-  'rconPassword' | 'discordWebhookUrl' |
+  'rconPassword' |
   'modpackSource' | 'modpackProjectId' | 'modpackVersionId' | 'modpackSlug' |
   'mcVersion' | 'type'
 >>;
@@ -115,7 +112,6 @@ export function updateServer(id: string, patch: ServerPatch): ServerConfig | und
   if (patch.backupRetainCount !== undefined) { fields.push('backup_retain_count = $backupRetainCount'); params.$backupRetainCount = patch.backupRetainCount; }
   if (patch.backupLastAt !== undefined) { fields.push('backup_last_at = $backupLastAt'); params.$backupLastAt = patch.backupLastAt; }
   if (patch.rconPassword !== undefined) { fields.push('rcon_password = $rconPassword'); params.$rconPassword = patch.rconPassword; }
-  if (patch.discordWebhookUrl !== undefined) { fields.push('discord_webhook_url = $discordWebhookUrl'); params.$discordWebhookUrl = patch.discordWebhookUrl; }
   if (patch.modpackSource !== undefined) { fields.push('modpack_source = $modpackSource'); params.$modpackSource = patch.modpackSource; }
   if (patch.modpackProjectId !== undefined) { fields.push('modpack_project_id = $modpackProjectId'); params.$modpackProjectId = patch.modpackProjectId; }
   if (patch.modpackVersionId !== undefined) { fields.push('modpack_version_id = $modpackVersionId'); params.$modpackVersionId = patch.modpackVersionId; }
