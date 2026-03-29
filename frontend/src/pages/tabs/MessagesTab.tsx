@@ -49,18 +49,21 @@ function AddForm({ type, serverId, onAdded }: {
 
   if (!open) {
     return (
-      <button onClick={() => setOpen(true)} className="btn-ghost text-xs w-full justify-center border border-dashed border-mc-border hover:border-mc-green mt-2">
-        <Plus size={13} /> Add {type === 'join' ? 'login' : 'timed'} message
+      <button
+        onClick={() => setOpen(true)}
+        className="btn-ghost text-xs w-full justify-center border border-dashed border-mc-border hover:border-mc-green/50 hover:text-mc-green mt-2 py-2 transition-colors"
+      >
+        <Plus size={12} /> Add {type === 'join' ? 'login' : 'timed'} message
       </button>
     );
   }
 
   return (
-    <div className="card p-3 mt-2 space-y-2">
+    <div className="card p-3.5 mt-2 space-y-3 border-mc-green/20">
       <textarea
         className="input w-full font-mono text-xs resize-none"
         rows={3}
-        placeholder={type === 'join' ? 'Welcome to the server!\nPlease read the rules in #rules.' : 'Remember to vote at vote.example.com!'}
+        placeholder={type === 'join' ? 'Welcome to the server!\nPlease read the rules.' : 'Remember to vote at vote.example.com!'}
         value={content}
         onChange={(e) => setContent(e.target.value)}
         autoFocus
@@ -68,7 +71,7 @@ function AddForm({ type, serverId, onAdded }: {
       {type === 'timed' && (
         <div className="flex items-center gap-2">
           <span className="text-xs text-mc-muted">Repeat every</span>
-          <select className="input text-xs py-1" value={intervalMinutes} onChange={(e) => setIntervalMinutes(Number(e.target.value))}>
+          <select className="input text-xs py-1.5" value={intervalMinutes} onChange={(e) => setIntervalMinutes(Number(e.target.value))}>
             {INTERVAL_OPTIONS.map((o) => (
               <option key={o.value} value={o.value}>{o.label}</option>
             ))}
@@ -123,7 +126,7 @@ function MessageCard({ msg, serverId, onUpdated, onDeleted }: {
   }
 
   return (
-    <div className={`card p-3 space-y-2 ${!msg.enabled ? 'opacity-50' : ''}`}>
+    <div className={`card p-3.5 transition-opacity ${!msg.enabled ? 'opacity-50' : ''}`}>
       <div className="flex items-start justify-between gap-2">
         <div className="flex-1 min-w-0">
           {editing ? (
@@ -136,14 +139,15 @@ function MessageCard({ msg, serverId, onUpdated, onDeleted }: {
             />
           ) : (
             <pre
-              className="font-mono text-xs text-gray-300 whitespace-pre-wrap break-words cursor-pointer hover:text-gray-100"
+              className="font-mono text-xs text-gray-300 whitespace-pre-wrap break-words cursor-pointer hover:text-gray-100 transition-colors"
               onClick={() => setEditing(true)}
+              title="Click to edit"
             >
               {msg.content}
             </pre>
           )}
           {msg.type === 'timed' && (
-            <div className="mt-1">
+            <div className="mt-2">
               {editing ? (
                 <div className="flex items-center gap-2">
                   <span className="text-xs text-mc-muted">Repeat every</span>
@@ -155,25 +159,26 @@ function MessageCard({ msg, serverId, onUpdated, onDeleted }: {
                 </div>
               ) : (
                 <span className="text-xs text-mc-muted flex items-center gap-1">
-                  <Clock size={11} /> Every {INTERVAL_OPTIONS.find(o => o.value === msg.intervalMinutes)?.label ?? `${msg.intervalMinutes} min`}
+                  <Clock size={10} />
+                  Every {INTERVAL_OPTIONS.find(o => o.value === msg.intervalMinutes)?.label ?? `${msg.intervalMinutes} min`}
                 </span>
               )}
             </div>
           )}
         </div>
 
-        <div className="flex items-center gap-1 flex-shrink-0">
-          <button onClick={toggle} className="text-mc-muted hover:text-mc-green p-1" title={msg.enabled ? 'Disable' : 'Enable'}>
-            {msg.enabled ? <ToggleRight size={18} className="text-mc-green" /> : <ToggleLeft size={18} />}
+        <div className="flex items-center gap-0.5 flex-shrink-0">
+          <button onClick={toggle} className="text-mc-muted hover:text-mc-green p-1.5 transition-colors" title={msg.enabled ? 'Disable' : 'Enable'}>
+            {msg.enabled ? <ToggleRight size={17} className="text-mc-green" /> : <ToggleLeft size={17} />}
           </button>
-          <button onClick={remove} className="text-mc-muted hover:text-red-400 p-1" title="Delete">
-            <Trash2 size={13} />
+          <button onClick={remove} className="text-mc-muted hover:text-red-400 p-1.5 transition-colors" title="Delete">
+            <Trash2 size={12} />
           </button>
         </div>
       </div>
 
       {editing && (
-        <div className="flex gap-2">
+        <div className="flex gap-2 mt-3 pt-2 border-t border-mc-border/40">
           <button onClick={save} className="btn-primary text-xs" disabled={saving}>
             {saving ? 'Saving…' : 'Save'}
           </button>
@@ -203,48 +208,58 @@ export default function MessagesTab({ serverId }: { serverId: string }) {
   const joinMsgs = messages.filter((m) => m.type === 'join');
   const timedMsgs = messages.filter((m) => m.type === 'timed');
 
-  if (loading) return <div className="p-4 text-mc-muted text-sm">Loading…</div>;
+  if (loading) return <div className="p-6 text-mc-muted text-sm">Loading…</div>;
 
   return (
-    <div className="p-4 space-y-6">
+    <div className="p-4 space-y-6 max-w-2xl">
       {/* Login messages */}
-      <div>
-        <div className="flex items-center gap-2 mb-1">
-          <MessageSquare size={14} className="text-mc-green" />
-          <h3 className="text-sm font-medium text-gray-200">Login Messages</h3>
+      <div className="card border-l-2 border-mc-green overflow-visible">
+        <div className="p-4 border-b border-mc-border/40">
+          <div className="flex items-center gap-2 mb-0.5">
+            <MessageSquare size={14} className="text-mc-green" />
+            <h3 className="text-sm font-medium text-gray-200">Login Messages</h3>
+            {joinMsgs.length > 0 && (
+              <span className="text-xs bg-mc-green/20 text-mc-green px-1.5 py-0.5 rounded ml-auto">{joinMsgs.length}</span>
+            )}
+          </div>
+          <p className="text-xs text-mc-muted leading-relaxed">
+            Sent privately to a player when they join via <code className="font-mono bg-mc-dark px-1 py-0.5 rounded text-gray-300">/tell</code>. Supports multiple lines.
+          </p>
         </div>
-        <p className="text-xs text-mc-muted mb-3">
-          Sent privately to a player when they join via <code className="font-mono">/tell</code>. Supports multiple lines.
-        </p>
-        <div className="space-y-2">
+        <div className="p-4 space-y-2">
           {joinMsgs.length === 0 && (
-            <div className="text-xs text-mc-muted italic">No login messages yet.</div>
+            <div className="text-xs text-mc-muted/60 italic py-2">No login messages configured.</div>
           )}
           {joinMsgs.map((m) => (
             <MessageCard key={m.id} msg={m} serverId={serverId} onUpdated={load} onDeleted={load} />
           ))}
+          <AddForm type="join" serverId={serverId} onAdded={load} />
         </div>
-        <AddForm type="join" serverId={serverId} onAdded={load} />
       </div>
 
       {/* Timed messages */}
-      <div>
-        <div className="flex items-center gap-2 mb-1">
-          <Clock size={14} className="text-mc-green" />
-          <h3 className="text-sm font-medium text-gray-200">Timed Messages</h3>
+      <div className="card border-l-2 border-blue-500 overflow-visible">
+        <div className="p-4 border-b border-mc-border/40">
+          <div className="flex items-center gap-2 mb-0.5">
+            <Clock size={14} className="text-blue-400" />
+            <h3 className="text-sm font-medium text-gray-200">Timed Messages</h3>
+            {timedMsgs.length > 0 && (
+              <span className="text-xs bg-blue-900/30 text-blue-300 border border-blue-700/30 px-1.5 py-0.5 rounded ml-auto">{timedMsgs.length}</span>
+            )}
+          </div>
+          <p className="text-xs text-mc-muted leading-relaxed">
+            Broadcast to all players on a repeating interval via <code className="font-mono bg-mc-dark px-1 py-0.5 rounded text-gray-300">/say</code>. Timers start when the server starts.
+          </p>
         </div>
-        <p className="text-xs text-mc-muted mb-3">
-          Broadcast to all players on a repeating interval via <code className="font-mono">/say</code>. Timers start when the server starts.
-        </p>
-        <div className="space-y-2">
+        <div className="p-4 space-y-2">
           {timedMsgs.length === 0 && (
-            <div className="text-xs text-mc-muted italic">No timed messages yet.</div>
+            <div className="text-xs text-mc-muted/60 italic py-2">No timed messages configured.</div>
           )}
           {timedMsgs.map((m) => (
             <MessageCard key={m.id} msg={m} serverId={serverId} onUpdated={load} onDeleted={load} />
           ))}
+          <AddForm type="timed" serverId={serverId} onAdded={load} />
         </div>
-        <AddForm type="timed" serverId={serverId} onAdded={load} />
       </div>
     </div>
   );

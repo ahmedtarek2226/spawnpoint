@@ -8,7 +8,7 @@ export type ServerType = typeof SERVER_TYPES[number];
 
 export type ServerStatus = 'stopped' | 'starting' | 'running' | 'stopping' | 'crashed';
 
-export const JAVA_VERSIONS = ['8', '11', '17', '21', '21-graal', '22'] as const;
+export const JAVA_VERSIONS = ['8', '11', '17', '21', '21-graal', '22', '25'] as const;
 export type JavaVersion = typeof JAVA_VERSIONS[number];
 
 export interface ServerConfig {
@@ -28,6 +28,10 @@ export interface ServerConfig {
   backupRetainCount: number;
   backupLastAt: string | null;
   discordWebhookUrl: string | null;
+  modpackSource?: 'modrinth' | 'curseforge' | null;
+  modpackProjectId?: string | null;
+  modpackVersionId?: string | null;
+  modpackSlug?: string | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -73,6 +77,23 @@ export interface BackupRecord {
   createdAt: string;
 }
 
+export type JobStatus = 'queued' | 'running' | 'done' | 'failed';
+export type JobType = 'install_modpack' | 'update_modpack';
+
+export interface JobRecord {
+  id: string;
+  type: JobType;
+  status: JobStatus;
+  label: string;
+  serverId: string | null;
+  progress: number;
+  step: string;
+  error: string | null;
+  result: unknown;
+  createdAt: string;
+  updatedAt: string;
+}
+
 // WebSocket message types
 export type WsInbound =
   | { type: 'subscribe_console'; serverId: string }
@@ -87,4 +108,5 @@ export type WsOutbound =
   | { type: 'metrics_tick'; serverId: string; metrics: ServerMetrics; timestamp: number }
   | { type: 'crash_diagnosis'; serverId: string; issues: CrashIssue[] }
   | { type: 'backup_status'; serverId: string; backingUp: boolean }
-  | { type: 'error'; code: string; message: string };
+  | { type: 'error'; code: string; message: string }
+  | { type: 'job_update'; job: JobRecord };

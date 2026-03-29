@@ -7,16 +7,20 @@ import CreateServer from './pages/CreateServer';
 import ImportPrism from './pages/ImportPrism';
 import ImportBackup from './pages/ImportBackup';
 import Login from './pages/Login';
+import JobsPanel from './components/JobsPanel';
 import { initWs, onWsConnect } from './hooks/useServerSocket';
 import { useServersStore } from './stores/serversStore';
+import { useJobStore } from './stores/jobStore';
 import { api } from './api/client';
 import type { Server } from './stores/serversStore';
+import type { JobRecord } from './stores/jobStore';
 
 type AuthState = 'loading' | 'unauthenticated' | 'authenticated';
 
 export default function App() {
   const setServers = useServersStore((s) => s.setServers);
   const servers = useServersStore((s) => s.servers);
+  const setJobs = useJobStore((s) => s.setJobs);
   const [auth, setAuth] = useState<AuthState>('loading');
 
   useEffect(() => {
@@ -37,6 +41,7 @@ export default function App() {
     initWs();
     const fetchServers = () => api.get<Server[]>('/servers').then(setServers).catch(() => {});
     fetchServers();
+    api.get<JobRecord[]>('/jobs').then(setJobs).catch(() => {});
     // Re-sync on WS connect/reconnect to catch any missed status changes
     const unsubWs = onWsConnect(fetchServers);
     return unsubWs;
@@ -73,15 +78,18 @@ export default function App() {
   }
 
   return (
-    <Routes>
-      <Route path="/login" element={<Navigate to="/" replace />} />
-      <Route element={<Layout />}>
-        <Route index element={<Dashboard />} />
-        <Route path="servers/new" element={<CreateServer />} />
-        <Route path="servers/import" element={<ImportPrism />} />
-        <Route path="servers/import-backup" element={<ImportBackup />} />
-        <Route path="servers/:id/*" element={<ServerDetail />} />
-      </Route>
-    </Routes>
+    <>
+      <Routes>
+        <Route path="/login" element={<Navigate to="/" replace />} />
+        <Route element={<Layout />}>
+          <Route index element={<Dashboard />} />
+          <Route path="servers/new" element={<CreateServer />} />
+          <Route path="servers/import" element={<ImportPrism />} />
+          <Route path="servers/import-backup" element={<ImportBackup />} />
+          <Route path="servers/:id/*" element={<ServerDetail />} />
+        </Route>
+      </Routes>
+      <JobsPanel />
+    </>
   );
 }

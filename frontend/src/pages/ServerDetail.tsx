@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
-import { useParams, useNavigate, Routes, Route, NavLink } from 'react-router-dom';
-import { Play, Square, RotateCw, Zap, Trash2, Terminal, FolderOpen, Settings, Archive, Package, Users, MessageSquare, CalendarClock } from 'lucide-react';
+import { useParams, Routes, Route, NavLink } from 'react-router-dom';
+import { Play, Square, RotateCw, Zap, Terminal, FolderOpen, Settings, Archive, Package, Users } from 'lucide-react';
 import { api } from '../api/client';
 import { useServersStore } from '../stores/serversStore';
 import StatusBadge from '../components/StatusBadge';
@@ -9,11 +9,9 @@ import ConsoleTab from './tabs/ConsoleTab';
 import FilesTab from './tabs/FilesTab';
 import PropertiesTab from './tabs/PropertiesTab';
 import ModsTab from './tabs/ModsTab';
-import BackupsTab from './tabs/BackupsTab';
+import AutomationTab from './tabs/AutomationTab';
 import SettingsTab from './tabs/SettingsTab';
 import PlayersTab from './tabs/PlayersTab';
-import MessagesTab from './tabs/MessagesTab';
-import ScheduleTab from './tabs/ScheduleTab';
 
 const TABS = [
   { path: '', label: 'Console', icon: Terminal },
@@ -22,20 +20,16 @@ const TABS = [
   { path: 'properties', label: 'Properties', icon: Settings },
   { path: 'mods', label: 'Mods/Plugins', icon: Package },
   { path: 'backups', label: 'Backups', icon: Archive },
-  { path: 'messages', label: 'Messages', icon: MessageSquare },
-  { path: 'schedule', label: 'Schedule', icon: CalendarClock },
   { path: 'settings', label: 'Settings', icon: Settings },
 ];
 
 export default function ServerDetail() {
   const { id } = useParams<{ id: string }>();
-  const navigate = useNavigate();
   const servers = useServersStore((s) => s.servers);
   const setServers = useServersStore((s) => s.setServers);
   const server = servers.find((s) => s.id === id);
   const [actionLoading, setActionLoading] = useState<string | null>(null);
   const [error, setError] = useState('');
-  const [showDeleteModal, setShowDeleteModal] = useState(false);
 
   useEffect(() => {
     if (!server && id) {
@@ -63,20 +57,6 @@ export default function ServerDetail() {
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : `${name} failed`);
     } finally {
-      setActionLoading(null);
-    }
-  }
-
-  async function deleteServer() {
-    setShowDeleteModal(false);
-    setActionLoading('delete');
-    try {
-      await api.delete(`/servers/${id}?wipe=true`);
-      const servers = await api.get<typeof server[]>('/servers');
-      setServers(servers as never);
-      navigate('/');
-    } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : 'Delete failed');
       setActionLoading(null);
     }
   }
@@ -135,9 +115,6 @@ export default function ServerDetail() {
                 <Zap size={14} /> Kill
               </button>
             )}
-            <button className="btn-danger text-sm px-2" onClick={() => setShowDeleteModal(true)} disabled={!!actionLoading}>
-              <Trash2 size={14} />
-            </button>
           </div>
         </div>
 
@@ -197,32 +174,11 @@ export default function ServerDetail() {
           <Route path="files" element={<FilesTab serverId={id!} />} />
           <Route path="properties" element={<PropertiesTab serverId={id!} />} />
           <Route path="mods" element={<ModsTab serverId={id!} />} />
-          <Route path="backups" element={<BackupsTab serverId={id!} />} />
-          <Route path="messages" element={<MessagesTab serverId={id!} />} />
-          <Route path="schedule" element={<ScheduleTab serverId={id!} />} />
+          <Route path="backups" element={<AutomationTab serverId={id!} />} />
           <Route path="settings" element={<SettingsTab server={server} />} />
         </Routes>
       </div>
 
-      {showDeleteModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60">
-          <div className="bg-mc-panel border border-mc-border rounded-lg shadow-xl w-full max-w-sm mx-4 p-5 space-y-4">
-            <div className="text-sm font-medium text-gray-200">Delete server</div>
-            <p className="text-xs text-mc-muted">
-              Are you sure you want to delete <span className="text-gray-300 font-medium">{server.name}</span>?
-              All server files, worlds, and configuration will be permanently removed.
-            </p>
-            <div className="flex gap-2 justify-end pt-1">
-              <button className="btn-ghost text-xs" onClick={() => setShowDeleteModal(false)}>
-                Cancel
-              </button>
-              <button className="btn-danger text-xs" onClick={deleteServer}>
-                Delete server
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 }

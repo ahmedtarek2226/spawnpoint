@@ -1,7 +1,7 @@
 import Dockerode from 'dockerode';
 import path from 'path';
 import fs from 'fs';
-import { execSync } from 'child_process';
+import { execFileSync } from 'child_process';
 import { ServerConfig, ServerRuntime, ServerMetrics, ServerStatus, WsOutbound } from '../types';
 import { MC_IMAGE, RCON_PORT_INSIDE_CONTAINER, CONSOLE_BUFFER_SIZE, SERVERS_DIR } from '../config';
 import { getHostDataDir } from './hostDataDir';
@@ -65,19 +65,21 @@ export function setBackingUp(serverId: string, value: boolean): void {
   broadcast(serverId, { type: 'backup_status', serverId, backingUp: value });
 }
 
-function pushLine(serverId: string, line: string): void {
+function pushLine(serverId: string, line: string, skipStatusInference = false): void {
   const rt = getRuntime(serverId);
   rt.consoleBuf.push(line);
   if (rt.consoleBuf.length > CONSOLE_BUFFER_SIZE) rt.consoleBuf.shift();
   broadcast(serverId, { type: 'console_line', serverId, line, timestamp: Date.now() });
 
-  // Detect status from console output
-  if (/Done \([\d.]+s\)! For help/.test(line)) {
-    setStatus(serverId, 'running');
-    const config = getServer(serverId);
-    if (config) startScheduler(config);
+  // Detect status from console output — skipped when replaying historical log lines during sync
+  if (!skipStatusInference) {
+    if (/Done \([\d.]+s\)! For help/.test(line)) {
+      setStatus(serverId, 'running');
+      const config = getServer(serverId);
+      if (config) startScheduler(config);
+    }
+    if (/Stopping the server/.test(line)) setStatus(serverId, 'stopping');
   }
-  if (/Stopping the server/.test(line)) setStatus(serverId, 'stopping');
 
   // Parse TPS from Paper/Spigot `/tps` response
   const tpsMatch = line.match(/TPS from last 1m, 5m, 15m: ([\d.]+)/);
@@ -116,7 +118,7 @@ function pushLine(serverId: string, line: string): void {
   }
 }
 
-async function attachLogs(serverId: string, container: Dockerode.Container): Promise<void> {
+async function attachLogs(serverId: string, container: Dockerode.Container, skipStatusInference = false): Promise<void> {
   if (logStreams.has(serverId)) return;
 
   const stream = await container.logs({
@@ -143,7 +145,7 @@ async function attachLogs(serverId: string, container: Dockerode.Container): Pro
     const lines = buf.split('\n');
     buf = lines.pop() ?? '';
     for (const line of lines) {
-      if (line.trim()) pushLine(serverId, line);
+      if (line.trim()) pushLine(serverId, line, skipStatusInference);
     }
   });
 
@@ -220,10 +222,12 @@ export async function syncContainerStates(servers: ServerConfig[]): Promise<void
       const container = docker.getContainer(containerName(server.id));
       const info = await container.inspect();
       if (info.State.Running) {
-        setStatus(server.id, 'running');
         getRuntime(server.id).containerId = info.Id;
-        await attachLogs(server.id, container);
+        setStatus(server.id, 'running');
+        await attachLogs(server.id, container, true); // skipStatusInference: don't let stale log lines override the inspect()-confirmed state
         startMetrics(server.id, container);
+        const config = getServer(server.id);
+        if (config) startScheduler(config); // restart scheduler for servers that were running before backend restarted
       }
     } catch {
       // Container doesn't exist — server is stopped
@@ -248,6 +252,7 @@ export async function startServer(config: ServerConfig): Promise<void> {
 
   inProgress.add(config.id);
   setStatus(config.id, 'starting');
+  rt.consoleBuf = [];
   rt.metrics.playersOnline = 0;
   rt.playersOnline = [];
   rt.crashDiagnosis = undefined;
@@ -294,7 +299,7 @@ export async function startServer(config: ServerConfig): Promise<void> {
   try {
     const serverDataDir = path.join(SERVERS_DIR, config.id);
     if (fs.existsSync(serverDataDir)) {
-      execSync(`chown -R 1000:1000 "${serverDataDir}"`);
+      execFileSync('chown', ['-R', '1000:1000', serverDataDir]);
       console.log(`[startServer] Fixed ownership of ${serverDataDir} to 1000:1000`);
     }
   } catch (e) {

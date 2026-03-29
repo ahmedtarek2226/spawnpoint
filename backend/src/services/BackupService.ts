@@ -21,13 +21,43 @@ function readTomlField(content: string, key: string): string | undefined {
 export function detectModpackInfo(serverDir: string): ModpackInfo {
   const info: ModpackInfo = {};
 
-  // BCC (BetterCompatibilityChecker) — used by ATM, AllTheMons, etc.
+  // BCC (BetterCompatibilityChecker) — used by ATM, AllTheMods, etc.
   try {
     const bcc = fs.readFileSync(path.join(serverDir, 'config', 'bcc-common.toml'), 'utf8');
     const name = readTomlField(bcc, 'modpackName');
     const version = readTomlField(bcc, 'modpackVersion');
     if (name) info.name = name;
     if (version) info.version = version;
+    if (info.name || info.version) return info;
+  } catch { /* not present */ }
+
+  // Packwiz pack.toml — common format for Fabric/Quilt/Forge modpacks
+  try {
+    const toml = fs.readFileSync(path.join(serverDir, 'pack.toml'), 'utf8');
+    const name = readTomlField(toml, 'name');
+    const version = readTomlField(toml, 'version');
+    if (name) info.name = name;
+    if (version) info.version = version;
+    // Packwiz versions block: [versions] / minecraft = "x.y.z" / fabric = "x.y.z"
+    const mcMatch = toml.match(/^\s*minecraft\s*=\s*"([^"]+)"/m);
+    if (mcMatch) info.mcVersion = mcMatch[1];
+    const fabricMatch = toml.match(/^\s*fabric\s*=\s*"([^"]+)"/m);
+    const forgeMatch = toml.match(/^\s*forge\s*=\s*"([^"]+)"/m);
+    const neoforgeMatch = toml.match(/^\s*neoforge\s*=\s*"([^"]+)"/m);
+    const quiltMatch = toml.match(/^\s*quilt-loader\s*=\s*"([^"]+)"/m);
+    if (fabricMatch) { info.loader = 'fabric'; info.loaderVersion = fabricMatch[1]; }
+    else if (neoforgeMatch) { info.loader = 'neoforge'; info.loaderVersion = neoforgeMatch[1]; }
+    else if (forgeMatch) { info.loader = 'forge'; info.loaderVersion = forgeMatch[1]; }
+    else if (quiltMatch) { info.loader = 'quilt'; info.loaderVersion = quiltMatch[1]; }
+    if (info.name || info.version) return info;
+  } catch { /* not present */ }
+
+  // FTB server pack — version.json
+  try {
+    const raw = JSON.parse(fs.readFileSync(path.join(serverDir, 'version.json'), 'utf8'));
+    if (raw.name) info.name = raw.name;
+    if (raw.version) info.version = String(raw.version);
+    if (raw.minecraft) info.mcVersion = raw.minecraft;
     if (info.name || info.version) return info;
   } catch { /* not present */ }
 
@@ -115,19 +145,49 @@ export function detectModpackInfo(serverDir: string): ModpackInfo {
   return info;
 }
 
-/** Returns the world directory names that exist under serverDir. */
+/** Returns world directory names under serverDir.
+ *  Scans for level.dat — every Minecraft world root (vanilla, Spigot, or mod-added)
+ *  always contains one. Checks top-level dirs and one level deeper to catch worlds
+ *  nested inside a parent directory (e.g. some modpacks use saves/worldName/). */
 export function detectWorldDirs(serverDir: string): string[] {
   let levelName = 'world';
   try {
     const props = parseProperties(fs.readFileSync(path.join(serverDir, 'server.properties'), 'utf8'));
     if (props['level-name']) levelName = props['level-name'];
-  } catch { /* no server.properties yet — use default */ }
+  } catch { /* no server.properties yet */ }
 
-  const candidates = [levelName, `${levelName}_nether`, `${levelName}_the_end`];
-  return candidates.filter((d) => {
-    const p = path.join(serverDir, d);
-    return fs.existsSync(p) && fs.statSync(p).isDirectory();
-  });
+  const found = new Set<string>();
+
+  let entries: string[] = [];
+  try { entries = fs.readdirSync(serverDir); } catch { return []; }
+
+  for (const entry of entries) {
+    const full = path.join(serverDir, entry);
+    try { if (!fs.statSync(full).isDirectory()) continue; } catch { continue; }
+
+    // Direct hit: level.dat in this top-level dir
+    if (fs.existsSync(path.join(full, 'level.dat'))) {
+      found.add(entry);
+      continue;
+    }
+
+    // One level deeper — catches layouts like saves/worldName/level.dat
+    let sub: string[] = [];
+    try { sub = fs.readdirSync(full); } catch { continue; }
+    for (const child of sub) {
+      const childFull = path.join(full, child);
+      try { if (!fs.statSync(childFull).isDirectory()) continue; } catch { continue; }
+      if (fs.existsSync(path.join(childFull, 'level.dat'))) {
+        found.add(`${entry}/${child}`);
+      }
+    }
+  }
+
+  // Order: standard names first, then extras alphabetically
+  const standard = [levelName, `${levelName}_nether`, `${levelName}_the_end`];
+  const ordered = standard.filter((d) => found.has(d));
+  const extras = [...found].filter((d) => !standard.includes(d)).sort();
+  return [...ordered, ...extras];
 }
 
 export async function createBackupArchive(serverDir: string, outputPath: string): Promise<number> {
@@ -167,22 +227,37 @@ export async function createWorldBackupArchive(serverDir: string, outputPath: st
   });
 }
 
-export async function restoreBackupArchive(archivePath: string, serverDir: string, type: 'full' | 'world'): Promise<void> {
-  const { exec } = await import('child_process');
+async function execFile(cmd: string, args: string[]): Promise<{ stdout: string }> {
+  const { execFile: _execFile } = await import('child_process');
   const { promisify } = await import('util');
-  const execAsync = promisify(exec);
+  return promisify(_execFile)(cmd, args);
+}
+
+/** Throws if any entry in the tar archive contains path traversal sequences. */
+async function assertNoPathTraversal(archivePath: string): Promise<void> {
+  const { stdout } = await execFile('tar', ['-tzf', archivePath]);
+  const unsafe = stdout.split('\n').filter((e) => e.includes('..'));
+  if (unsafe.length > 0) {
+    throw new Error(`Archive contains unsafe paths: ${unsafe.slice(0, 3).join(', ')}`);
+  }
+}
+
+export async function restoreBackupArchive(archivePath: string, serverDir: string, type: 'full' | 'world'): Promise<void> {
+  // Zip-slip guard: reject archives with path traversal entries before extracting
+  await assertNoPathTraversal(archivePath);
 
   if (type === 'full') {
     fs.mkdirSync(serverDir, { recursive: true });
     // Wipe and restore entire directory
     if (fs.existsSync(serverDir)) fs.rmSync(serverDir, { recursive: true });
     fs.mkdirSync(serverDir, { recursive: true });
-    await execAsync(`tar -xzf "${archivePath}" -C "${serverDir}"`);
+    await execFile('tar', ['-xzf', archivePath, '-C', serverDir]);
   } else {
     // World-only: delete existing world dirs then extract
     const worldDirs = detectWorldDirs(serverDir);
     // Also remove dirs that will be restored even if they don't exist yet
-    const dirsInArchive = (await execAsync(`tar -tzf "${archivePath}"`)).stdout
+    const { stdout } = await execFile('tar', ['-tzf', archivePath]);
+    const dirsInArchive = stdout
       .split('\n')
       .filter((l) => l.includes('/') || l.trim() !== '')
       .map((l) => l.split('/')[0])
@@ -194,6 +269,6 @@ export async function restoreBackupArchive(archivePath: string, serverDir: strin
     }
 
     fs.mkdirSync(serverDir, { recursive: true });
-    await execAsync(`tar -xzf "${archivePath}" -C "${serverDir}"`);
+    await execFile('tar', ['-xzf', archivePath, '-C', serverDir]);
   }
 }

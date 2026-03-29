@@ -1,9 +1,11 @@
 import { useState, useRef, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Server, Upload, Archive, ChevronLeft, Package, Search, Download, ExternalLink, ChevronRight, Loader2, Lock } from 'lucide-react';
+import { Server, Upload, Archive, ChevronLeft, Package, Search, Download, ExternalLink, ChevronRight, Loader2, Lock, CheckCircle2, AlertCircle } from 'lucide-react';
 import { api, uploadPrismExport, imgProxy } from '../api/client';
 import { useServersStore } from '../stores/serversStore';
+import { useJobStore } from '../stores/jobStore';
 import type { Server as ServerType } from '../stores/serversStore';
+import type { JobRecord } from '../stores/jobStore';
 
 // ── shared constants ────────────────────────────────────────────────────────
 
@@ -528,6 +530,8 @@ type PackStep = 'search' | 'configure';
 
 function ModrinthPackForm({ onBack, onDone }: { onBack: () => void; onDone: (id: string) => void }) {
   const [step, setStep] = useState<PackStep>('search');
+  const upsertJob = useJobStore((s) => s.upsertJob);
+  const jobs = useJobStore((s) => s.jobs);
 
   // Search state
   const [query, setQuery] = useState('');
@@ -549,9 +553,10 @@ function ModrinthPackForm({ onBack, onDone }: { onBack: () => void; onDone: (id:
   const [memoryMb, setMemoryMb] = useState(4096);
   const [memoryHint, setMemoryHint] = useState('');
   const [javaVersion, setJavaVersion] = useState('21');
-  const [installing, setInstalling] = useState(false);
+  const [jobId, setJobId] = useState<string | null>(null);
   const [installError, setInstallError] = useState('');
-  const [result, setResult] = useState<{ name: string; versionId: string; mcVersion: string; serverType: string; loaderVersion?: string; modsDownloaded: number; modsSkipped: number } | null>(null);
+
+  const activeJob: JobRecord | null = jobId ? (jobs.find(j => j.id === jobId) ?? null) : null;
 
   const totalPages = Math.ceil(total / PACK_PAGE_SIZE);
 
@@ -611,6 +616,14 @@ function ModrinthPackForm({ onBack, onDone }: { onBack: () => void; onDone: (id:
     setStep('configure');
   }
 
+  // Navigate when job completes
+  useEffect(() => {
+    if (!activeJob) return;
+    if (activeJob.status === 'done' && activeJob.result?.serverId) {
+      onDone(activeJob.result.serverId);
+    }
+  }, [activeJob?.status]);
+
   async function install(e: React.FormEvent) {
     e.preventDefault();
     if (!selectedPack || !selectedVersionId) return;
@@ -619,21 +632,21 @@ function ModrinthPackForm({ onBack, onDone }: { onBack: () => void; onDone: (id:
     const file = ver.files.find(f => f.primary) ?? ver.files[0];
     if (!file) { setInstallError('No downloadable file found for this version'); return; }
 
-    setInstalling(true);
     setInstallError('');
     try {
       const res = await fetch('/api/prism/install-from-url', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ packUrl: file.url, name, port, memoryMb, javaVersion }),
+        body: JSON.stringify({ packUrl: file.url, name, port, memoryMb, javaVersion, projectId: selectedPack.project_id, versionId: selectedVersionId }),
       });
       const json = await res.json();
       if (!json.success) throw new Error(json.error?.message ?? 'Install failed');
-      setResult(json.data.importInfo);
-      setTimeout(() => onDone(json.data.server.id), 1500);
+      // Seed the store with the initial job state
+      const job = await api.get<JobRecord>(`/jobs/${json.data.jobId}`);
+      upsertJob(job);
+      setJobId(json.data.jobId);
     } catch (err: unknown) {
       setInstallError(err instanceof Error ? err.message : 'Install failed');
-      setInstalling(false);
     }
   }
 
@@ -709,16 +722,29 @@ function ModrinthPackForm({ onBack, onDone }: { onBack: () => void; onDone: (id:
             </div>
           </div>
 
-          {result && (
-            <div className="bg-mc-green/10 border border-mc-green/40 rounded p-4 text-sm">
-              <div className="font-medium text-mc-green">Install successful! Redirecting…</div>
-              <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-xs mt-2">
-                <span className="text-mc-muted">Pack</span><span className="text-white">{result.name} {result.versionId}</span>
-                <span className="text-mc-muted">MC Version</span><span className="text-white">{result.mcVersion}</span>
-                <span className="text-mc-muted">Type</span><span className="text-white capitalize">{result.serverType}{result.loaderVersion ? ` ${result.loaderVersion}` : ''}</span>
-                <span className="text-mc-muted">Mods downloaded</span><span className="text-white">{result.modsDownloaded}</span>
-                <span className="text-mc-muted">Client-only skipped</span><span className="text-white">{result.modsSkipped}</span>
-              </div>
+          {activeJob && (
+            <div className={`rounded p-4 text-sm border ${activeJob.status === 'failed' ? 'bg-red-950/40 border-red-800/40' : 'bg-mc-green/10 border-mc-green/40'}`}>
+              {activeJob.status === 'running' || activeJob.status === 'queued' ? (
+                <>
+                  <div className="flex items-center gap-2 text-mc-green mb-2">
+                    <Loader2 size={14} className="animate-spin" />
+                    <span className="font-medium">{activeJob.step}</span>
+                  </div>
+                  <div className="h-1.5 bg-mc-dark rounded-full overflow-hidden">
+                    <div className="h-full bg-mc-green rounded-full transition-all duration-500" style={{ width: `${activeJob.progress}%` }} />
+                  </div>
+                </>
+              ) : activeJob.status === 'done' ? (
+                <div className="flex items-center gap-2 text-mc-green">
+                  <CheckCircle2 size={14} />
+                  <span className="font-medium">Install complete! Redirecting…</span>
+                </div>
+              ) : (
+                <div className="flex items-start gap-2 text-red-400">
+                  <AlertCircle size={14} className="mt-0.5 flex-shrink-0" />
+                  <span>{activeJob.error ?? 'Install failed'}</span>
+                </div>
+              )}
             </div>
           )}
 
@@ -726,9 +752,9 @@ function ModrinthPackForm({ onBack, onDone }: { onBack: () => void; onDone: (id:
             <div className="bg-red-900/30 border border-red-700 text-red-400 rounded px-3 py-2 text-sm">{installError}</div>
           )}
 
-          <button type="submit" className="btn-primary w-full" disabled={installing || versionsLoading || !selectedVersionId}>
-            {installing ? (
-              <><Loader2 size={14} className="animate-spin" /> Installing modpack…</>
+          <button type="submit" className="btn-primary w-full" disabled={!!activeJob || versionsLoading || !selectedVersionId}>
+            {activeJob && (activeJob.status === 'running' || activeJob.status === 'queued') ? (
+              <><Loader2 size={14} className="animate-spin" /> Installing…</>
             ) : (
               <><Download size={14} /> Create Server</>
             )}
@@ -854,6 +880,8 @@ const CF_PACK_PAGE_SIZE = 20;
 
 function CurseForgePackForm({ onBack, onDone }: { onBack: () => void; onDone: (id: string) => void }) {
   const [step, setStep] = useState<'search' | 'configure'>('search');
+  const upsertJob = useJobStore((s) => s.upsertJob);
+  const jobs = useJobStore((s) => s.jobs);
 
   const [query, setQuery] = useState('');
   const [hits, setHits] = useState<CfPackHit[]>([]);
@@ -872,9 +900,10 @@ function CurseForgePackForm({ onBack, onDone }: { onBack: () => void; onDone: (i
   const [memoryMb, setMemoryMb] = useState(4096);
   const [memoryHint, setMemoryHint] = useState('');
   const [javaVersion, setJavaVersion] = useState('21');
-  const [installing, setInstalling] = useState(false);
+  const [jobId, setJobId] = useState<string | null>(null);
   const [installError, setInstallError] = useState('');
-  const [result, setResult] = useState<{ name: string; version: string; mcVersion: string; serverType: string; loaderVersion?: string; modsDownloaded: number; modsSkipped: number } | null>(null);
+
+  const activeJob: JobRecord | null = jobId ? (jobs.find(j => j.id === jobId) ?? null) : null;
 
   const totalPages = Math.ceil(total / CF_PACK_PAGE_SIZE);
 
@@ -932,6 +961,14 @@ function CurseForgePackForm({ onBack, onDone }: { onBack: () => void; onDone: (i
     setStep('configure');
   }
 
+  // Navigate when job completes
+  useEffect(() => {
+    if (!activeJob) return;
+    if (activeJob.status === 'done' && activeJob.result?.serverId) {
+      onDone(activeJob.result.serverId);
+    }
+  }, [activeJob?.status]);
+
   async function install(e: React.FormEvent) {
     e.preventDefault();
     if (!selectedPack || !selectedFileId) return;
@@ -942,7 +979,6 @@ function CurseForgePackForm({ onBack, onDone }: { onBack: () => void; onDone: (i
       return;
     }
 
-    setInstalling(true);
     setInstallError('');
     try {
       const res = await fetch('/api/prism/install-from-curseforge', {
@@ -952,11 +988,11 @@ function CurseForgePackForm({ onBack, onDone }: { onBack: () => void; onDone: (i
       });
       const json = await res.json();
       if (!json.success) throw new Error(json.error?.message ?? 'Install failed');
-      setResult(json.data.importInfo);
-      setTimeout(() => onDone(json.data.server.id), 1500);
+      const job = await api.get<JobRecord>(`/jobs/${json.data.jobId}`);
+      upsertJob(job);
+      setJobId(json.data.jobId);
     } catch (err: unknown) {
       setInstallError(err instanceof Error ? err.message : 'Install failed');
-      setInstalling(false);
     }
   }
 
@@ -1028,24 +1064,37 @@ function CurseForgePackForm({ onBack, onDone }: { onBack: () => void; onDone: (i
             </div>
           </div>
 
-          {result && (
-            <div className="bg-mc-green/10 border border-mc-green/40 rounded p-4 text-sm">
-              <div className="font-medium text-mc-green">Install successful! Redirecting…</div>
-              <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-xs mt-2">
-                <span className="text-mc-muted">Pack</span><span className="text-white">{result.name} {result.version}</span>
-                <span className="text-mc-muted">MC Version</span><span className="text-white">{result.mcVersion}</span>
-                <span className="text-mc-muted">Type</span><span className="text-white capitalize">{result.serverType}{result.loaderVersion ? ` ${result.loaderVersion}` : ''}</span>
-                <span className="text-mc-muted">Mods downloaded</span><span className="text-white">{result.modsDownloaded}</span>
-                <span className="text-mc-muted">Skipped (no direct DL)</span><span className="text-white">{result.modsSkipped}</span>
-              </div>
+          {activeJob && (
+            <div className={`rounded p-4 text-sm border ${activeJob.status === 'failed' ? 'bg-red-950/40 border-red-800/40' : 'bg-mc-green/10 border-mc-green/40'}`}>
+              {activeJob.status === 'running' || activeJob.status === 'queued' ? (
+                <>
+                  <div className="flex items-center gap-2 text-mc-green mb-2">
+                    <Loader2 size={14} className="animate-spin" />
+                    <span className="font-medium">{activeJob.step}</span>
+                  </div>
+                  <div className="h-1.5 bg-mc-dark rounded-full overflow-hidden">
+                    <div className="h-full bg-mc-green rounded-full transition-all duration-500" style={{ width: `${activeJob.progress}%` }} />
+                  </div>
+                </>
+              ) : activeJob.status === 'done' ? (
+                <div className="flex items-center gap-2 text-mc-green">
+                  <CheckCircle2 size={14} />
+                  <span className="font-medium">Install complete! Redirecting…</span>
+                </div>
+              ) : (
+                <div className="flex items-start gap-2 text-red-400">
+                  <AlertCircle size={14} className="mt-0.5 flex-shrink-0" />
+                  <span>{activeJob.error ?? 'Install failed'}</span>
+                </div>
+              )}
             </div>
           )}
 
           {installError && <div className="bg-red-900/30 border border-red-700 text-red-400 rounded px-3 py-2 text-sm">{installError}</div>}
 
-          <button type="submit" className="btn-primary w-full" disabled={installing || filesLoading || !selectedFileId}>
-            {installing
-              ? <><Loader2 size={14} className="animate-spin" /> Installing modpack…</>
+          <button type="submit" className="btn-primary w-full" disabled={!!activeJob || filesLoading || !selectedFileId}>
+            {activeJob && (activeJob.status === 'running' || activeJob.status === 'queued')
+              ? <><Loader2 size={14} className="animate-spin" /> Installing…</>
               : <><Download size={14} /> Create Server</>}
           </button>
         </form>

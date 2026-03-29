@@ -1,8 +1,10 @@
 import { NavLink, useNavigate } from 'react-router-dom';
 import { useState, useEffect } from 'react';
-import { Plus, LayoutDashboard, X, LogOut, Search, Github } from 'lucide-react';
+import { Plus, LayoutDashboard, X, LogOut, Search, Github, Bell } from 'lucide-react';
 import { useServersStore } from '../../stores/serversStore';
+import { useJobStore } from '../../stores/jobStore';
 import StatusBadge from '../StatusBadge';
+import NotificationsDrawer from '../NotificationsDrawer';
 
 const SEARCH_THRESHOLD = 3;
 
@@ -16,9 +18,11 @@ function DockerIcon({ size }: { size: number }) {
 
 export default function Sidebar({ onClose }: { onClose?: () => void }) {
   const servers = useServersStore((s) => s.servers);
+  const unseenCount = useJobStore((s) => s.unseenCount);
   const navigate = useNavigate();
   const [search, setSearch] = useState('');
   const [version, setVersion] = useState<string | null>(null);
+  const [notifOpen, setNotifOpen] = useState(false);
 
   useEffect(() => {
     fetch('/api/health')
@@ -157,6 +161,26 @@ export default function Sidebar({ onClose }: { onClose?: () => void }) {
           <span className="font-medium">Add Server</span>
         </button>
 
+        {/* Notifications */}
+        <button
+          onClick={() => setNotifOpen((v) => !v)}
+          className={`w-full flex items-center gap-2 px-3 py-2 rounded text-sm transition-all duration-150 ${
+            notifOpen
+              ? 'bg-white/8 text-gray-200'
+              : 'text-mc-muted hover:text-gray-200 hover:bg-white/5'
+          }`}
+        >
+          <div className="relative flex-shrink-0">
+            <Bell size={13} />
+            {unseenCount > 0 && (
+              <span className="absolute -top-1 -right-1 min-w-[13px] h-[13px] bg-mc-green rounded-full text-[8px] font-bold text-black flex items-center justify-center px-0.5 leading-none">
+                {unseenCount > 9 ? '9+' : unseenCount}
+              </span>
+            )}
+          </div>
+          <span>Notifications</span>
+        </button>
+
         <button
           onClick={logout}
           className="w-full flex items-center gap-2 px-3 py-2 rounded text-sm text-mc-muted hover:text-red-400 hover:bg-red-500/5 transition-all duration-150"
@@ -165,29 +189,29 @@ export default function Sidebar({ onClose }: { onClose?: () => void }) {
           <span>Sign out</span>
         </button>
 
-        <div className="px-2 pt-1 flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <a
-              href="https://github.com/Gren-95/spawnpoint"
-              target="_blank"
-              rel="noreferrer"
-              title="GitHub"
-              className="text-mc-muted hover:text-gray-300 transition-colors duration-150"
-            >
-              <Github size={13} />
-            </a>
-            <a
-              href="https://hub.docker.com/r/fossfrog/spawnpoint"
-              target="_blank"
-              rel="noreferrer"
-              title="Docker Hub"
-              className="text-mc-muted hover:text-gray-300 transition-colors duration-150"
-            >
-              <DockerIcon size={13} />
-            </a>
-          </div>
+        <div className="px-2 pt-1 flex items-center gap-3">
+          <a
+            href="https://github.com/Gren-95/spawnpoint"
+            target="_blank"
+            rel="noreferrer"
+            title="GitHub"
+            className="text-mc-muted hover:text-gray-300 transition-colors duration-150"
+          >
+            <Github size={13} />
+          </a>
+          <a
+            href="https://hub.docker.com/r/fossfrog/spawnpoint"
+            target="_blank"
+            rel="noreferrer"
+            title="Docker Hub"
+            className="text-mc-muted hover:text-gray-300 transition-colors duration-150"
+          >
+            <DockerIcon size={13} />
+          </a>
         </div>
       </div>
+
+      <NotificationsDrawer isOpen={notifOpen} onClose={() => setNotifOpen(false)} />
     </aside>
   );
 }

@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import {
   Folder, FileText, ChevronRight, Upload, Trash2, Download,
-  ArrowLeft, Save, Plus, FolderPlus, RefreshCw, FilePen,
+  ArrowLeft, Save, Plus, FolderPlus, RefreshCw, FilePen, FolderUp, ChevronDown,
 } from 'lucide-react';
 import CodeMirror from '@uiw/react-codemirror';
 import { oneDark } from '@codemirror/theme-one-dark';
@@ -73,7 +73,18 @@ export default function FilesTab({ serverId }: { serverId: string }) {
   // Upload conflict modal
   const [conflictModal, setConflictModal] = useState<{ conflicts: string[]; pending: File[] } | null>(null);
 
+  // Upload feedback
+  const [uploading, setUploading] = useState(false);
+  const [uploadToast, setUploadToast] = useState<string | null>(null);
+  const [uploadMenuOpen, setUploadMenuOpen] = useState(false);
+  const uploadMenuRef = useRef<HTMLDivElement>(null);
+  function showUploadToast(msg: string) {
+    setUploadToast(msg);
+    setTimeout(() => setUploadToast(null), 3000);
+  }
+
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const folderInputRef = useRef<HTMLInputElement>(null);
 
   const isDirty = editContent !== savedContent;
 
@@ -91,6 +102,17 @@ export default function FilesTab({ serverId }: { serverId: string }) {
   }, [serverId]);
 
   useEffect(() => { loadDir(''); }, [loadDir]);
+
+  useEffect(() => {
+    if (!uploadMenuOpen) return;
+    function handleClick(e: MouseEvent) {
+      if (uploadMenuRef.current && !uploadMenuRef.current.contains(e.target as Node)) {
+        setUploadMenuOpen(false);
+      }
+    }
+    document.addEventListener('mousedown', handleClick);
+    return () => document.removeEventListener('mousedown', handleClick);
+  }, [uploadMenuOpen]);
 
   // Focus create input when it appears
   useEffect(() => {
@@ -193,11 +215,33 @@ export default function FilesTab({ serverId }: { serverId: string }) {
     }
 
     if (toUpload.length === 0) return;
+    setUploading(true);
     try {
       await uploadFiles(`/servers/${serverId}/files/upload`, toUpload, { path: dirPath });
+      showUploadToast(`Uploaded ${toUpload.length} file${toUpload.length !== 1 ? 's' : ''}`);
       loadDir(dirPath);
     } catch (err: unknown) {
       setDirError(err instanceof Error ? err.message : 'Upload failed');
+    } finally {
+      setUploading(false);
+    }
+  }
+
+  async function onFolderUpload(e: React.ChangeEvent<HTMLInputElement>) {
+    const files = e.target.files;
+    if (!files || files.length === 0) return;
+    e.target.value = '';
+    const fileArr = Array.from(files);
+    const relativePaths = fileArr.map((f) => (f as File & { webkitRelativePath: string }).webkitRelativePath || f.name);
+    setUploading(true);
+    try {
+      await uploadFiles(`/servers/${serverId}/files/upload`, fileArr, { path: dirPath }, relativePaths);
+      showUploadToast(`Uploaded ${fileArr.length} file${fileArr.length !== 1 ? 's' : ''}`);
+      loadDir(dirPath);
+    } catch (err: unknown) {
+      setDirError(err instanceof Error ? err.message : 'Upload failed');
+    } finally {
+      setUploading(false);
     }
   }
 
@@ -348,15 +392,47 @@ export default function FilesTab({ serverId }: { serverId: string }) {
             <Plus size={13} />
           </button>
           <input ref={fileInputRef} type="file" multiple className="hidden" onChange={onUpload} />
-          <button onClick={() => fileInputRef.current?.click()} className="btn-ghost p-1.5" title="Upload files">
-            <Upload size={13} />
-          </button>
+          <input ref={folderInputRef} type="file" {...{ webkitdirectory: '' } as React.InputHTMLAttributes<HTMLInputElement>} multiple className="hidden" onChange={onFolderUpload} />
+          <div ref={uploadMenuRef} className="relative">
+            <button
+              onClick={() => !uploading && setUploadMenuOpen((v) => !v)}
+              disabled={uploading}
+              className="btn-ghost p-1.5 disabled:opacity-50 flex items-center gap-0.5"
+              title="Upload"
+            >
+              {uploading
+                ? <span className="w-[13px] h-[13px] border border-current border-t-transparent rounded-full animate-spin inline-block" />
+                : <Upload size={13} />}
+              <ChevronDown size={10} className="text-mc-muted" />
+            </button>
+            {uploadMenuOpen && (
+              <div className="absolute right-0 top-full mt-1 z-30 bg-mc-panel border border-mc-border rounded shadow-lg py-1 min-w-[130px]">
+                <button
+                  onClick={() => { setUploadMenuOpen(false); fileInputRef.current?.click(); }}
+                  className="w-full flex items-center gap-2 px-3 py-1.5 text-xs text-gray-300 hover:bg-white/5 transition-colors"
+                >
+                  <Upload size={12} className="text-mc-muted" /> Files
+                </button>
+                <button
+                  onClick={() => { setUploadMenuOpen(false); folderInputRef.current?.click(); }}
+                  className="w-full flex items-center gap-2 px-3 py-1.5 text-xs text-gray-300 hover:bg-white/5 transition-colors"
+                >
+                  <FolderUp size={12} className="text-mc-muted" /> Folder
+                </button>
+              </div>
+            )}
+          </div>
         </div>
       </div>
 
       {dirError && (
         <div className="mx-3 mt-2 text-red-400 text-xs bg-red-900/20 border border-red-800 rounded px-2 py-1">
           {dirError}
+        </div>
+      )}
+      {uploadToast && (
+        <div className="mx-3 mt-2 text-mc-green text-xs bg-mc-green/10 border border-mc-green/30 rounded px-2 py-1">
+          {uploadToast}
         </div>
       )}
 

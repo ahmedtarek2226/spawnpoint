@@ -38,7 +38,12 @@ export interface Server {
   javaVersion: string;
   tags: string[];
   createdAt: string;
+  hostDirectory: string;
   runtime: ServerRuntime;
+  modpackSource?: 'modrinth' | 'curseforge' | null;
+  modpackProjectId?: string | null;
+  modpackVersionId?: string | null;
+  modpackSlug?: string | null;
 }
 
 interface State {

@@ -2,12 +2,42 @@ import { Router, Request, Response, NextFunction } from 'express';
 import multer from 'multer';
 import path from 'path';
 import fs from 'fs';
+import yauzl from 'yauzl';
 import { getServer } from '../models/Server';
 import { listDir, readFile, writeFile, deleteEntry, renameEntry, makeDir, parseProperties, stringifyProperties, safePath } from '../services/FileService';
 import { SERVERS_DIR } from '../config';
 
+function extractJarsFromZip(zipPath: string, destDir: string): Promise<string[]> {
+  return new Promise((resolve, reject) => {
+    const extracted: string[] = [];
+    yauzl.open(zipPath, { lazyEntries: true, autoClose: true }, (err, zip) => {
+      if (err || !zip) return reject(err ?? new Error('Failed to open zip'));
+      zip.readEntry();
+      zip.on('entry', (entry: yauzl.Entry) => {
+        // Only extract top-level .jar files (ignore nested directories)
+        const name: string = entry.fileName;
+        if (/\/$/.test(name) || !name.toLowerCase().endsWith('.jar') || name.includes('/')) {
+          zip.readEntry();
+          return;
+        }
+        const dest = safePath(destDir, path.basename(name));
+        zip.openReadStream(entry, (e, stream) => {
+          if (e || !stream) { zip.readEntry(); return; }
+          const out = fs.createWriteStream(dest);
+          stream.pipe(out);
+          out.on('finish', () => { extracted.push(path.basename(name)); zip.readEntry(); });
+          out.on('error', () => zip.readEntry());
+          stream.on('error', () => zip.readEntry());
+        });
+      });
+      zip.on('end', () => resolve(extracted));
+      zip.on('error', reject);
+    });
+  });
+}
+
 const router = Router({ mergeParams: true });
-const upload = multer({ dest: '/tmp/mc-uploads/' });
+const upload = multer({ dest: '/tmp/mc-uploads/', limits: { fieldSize: 20 * 1024 * 1024 } });
 
 function serverDir(id: string): string {
   return path.join(SERVERS_DIR, id);
@@ -51,24 +81,36 @@ router.put('/content', (req: Request, res: Response, next: NextFunction) => {
   } catch (err) { next(err); }
 });
 
-// Upload file(s)
-router.post('/upload', upload.array('files'), (req: Request, res: Response, next: NextFunction) => {
+// Upload file(s) — .jar files are placed directly; .zip files are unpacked and .jar contents extracted
+router.post('/upload', upload.array('files'), async (req: Request, res: Response, next: NextFunction) => {
   try {
     const destDir = (req.body.path as string) ?? '';
     const files = (req.files as Express.Multer.File[]) ?? [];
     const dir = serverDir(req.params.id);
-    for (const f of files) {
-      const dest = safePath(dir, path.join(destDir, f.originalname));
-      fs.mkdirSync(path.dirname(dest), { recursive: true });
-      try {
-        fs.renameSync(f.path, dest);
-      } catch (e: unknown) {
-        // rename fails across filesystems (EXDEV) — fall back to copy + delete
-        if ((e as NodeJS.ErrnoException).code === 'EXDEV') {
-          fs.copyFileSync(f.path, dest);
-          fs.unlinkSync(f.path);
-        } else {
-          throw e;
+    const absDestDir = safePath(dir, destDir);
+    fs.mkdirSync(absDestDir, { recursive: true });
+
+    const relativePaths: string[] = req.body.relativePaths ? JSON.parse(req.body.relativePaths) : [];
+
+    for (let i = 0; i < files.length; i++) {
+      const f = files[i];
+      const relPath = relativePaths[i] || f.originalname;
+
+      if (f.originalname.toLowerCase().endsWith('.zip') && !relativePaths[i]) {
+        await extractJarsFromZip(f.path, absDestDir);
+        fs.unlinkSync(f.path);
+      } else {
+        const dest = safePath(dir, path.join(destDir, relPath));
+        fs.mkdirSync(path.dirname(dest), { recursive: true });
+        try {
+          fs.renameSync(f.path, dest);
+        } catch (e: unknown) {
+          if ((e as NodeJS.ErrnoException).code === 'EXDEV') {
+            fs.copyFileSync(f.path, dest);
+            fs.unlinkSync(f.path);
+          } else {
+            throw e;
+          }
         }
       }
     }
@@ -132,6 +174,18 @@ router.put('/properties', (req: Request, res: Response, next: NextFunction) => {
     writeFile(serverDir(req.params.id), 'server.properties', stringifyProperties(props));
     res.json({ success: true });
   } catch (err) { next(err); }
+});
+
+// Mods that couldn't be auto-downloaded (CF distribution disabled)
+router.get('/mods/missing', (req: Request, res: Response) => {
+  try {
+    const filePath = path.join(serverDir(req.params.id), 'missing-mods.json');
+    if (!fs.existsSync(filePath)) return res.json({ success: true, data: [] });
+    const data = JSON.parse(fs.readFileSync(filePath, 'utf8'));
+    res.json({ success: true, data });
+  } catch {
+    res.json({ success: true, data: [] });
+  }
 });
 
 // Plugins/mods listing

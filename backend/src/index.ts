@@ -27,6 +27,9 @@ import schedulesRouter from './routes/schedules';
 import modrinthRouter from './routes/modrinth';
 import curseforgeServerRouter, { globalRouter as curseforgeGlobalRouter } from './routes/curseforge';
 import imageProxyRouter from './routes/imageProxy';
+import modpackUpdateRouter from './routes/modpackUpdate';
+import jobsRouter from './routes/jobs';
+import { resetStaleJobs } from './models/Job';
 import { CURSEFORGE_API_KEY } from './config';
 
 async function main(): Promise<void> {
@@ -37,15 +40,18 @@ async function main(): Promise<void> {
   }
 
   initDb();
+  resetStaleJobs();
 
   const app = express();
   if (CORS_ORIGIN) {
-    const allowed = CORS_ORIGIN === '*'
+    const isWildcard = CORS_ORIGIN === '*';
+    const allowed = isWildcard
       ? '*'
       : CORS_ORIGIN.split(',').map(o => o.trim()).filter(Boolean);
     app.use(cors({
       origin: allowed,
-      credentials: true,
+      // credentials + wildcard is rejected by browsers and is a misconfiguration
+      credentials: !isWildcard,
     }));
   }
   app.use(express.json({ limit: '50mb' }));
@@ -78,6 +84,8 @@ async function main(): Promise<void> {
   app.use('/api/servers/:id/modrinth', modrinthRouter);
   app.use('/api/servers/:id/curseforge', curseforgeServerRouter);
   app.use('/api/curseforge', curseforgeGlobalRouter);
+  app.use('/api/servers/:id/modpack', modpackUpdateRouter);
+  app.use('/api/jobs', jobsRouter);
 
   // Serve frontend (no auth — the SPA handles the login UI)
   if (fs.existsSync(PUBLIC_DIR)) {

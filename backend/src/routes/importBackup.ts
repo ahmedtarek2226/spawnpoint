@@ -57,6 +57,10 @@ router.post('/import-as-server', upload.single('backup'), async (req: Request, r
       javaVersion,
       rconPassword: nanoid(24),
       hostDirectory,
+      modpackSource: null,
+      modpackProjectId: null,
+      modpackVersionId: null,
+      modpackSlug: null,
     });
 
     res.status(201).json({

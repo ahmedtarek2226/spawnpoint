@@ -15,6 +15,14 @@ import fs from 'fs';
 import path from 'path';
 import { cfPost, cfGet } from './CurseForgeClient';
 
+export interface MissingMod {
+  projectId: number;
+  fileId: number;
+  name: string;
+  slug: string;
+  url: string;
+}
+
 export interface CfModpackImportResult {
   name: string;
   version: string;
@@ -23,6 +31,7 @@ export interface CfModpackImportResult {
   loaderVersion?: string;
   modsDownloaded: number;
   modsSkipped: number;
+  missingMods: MissingMod[];
 }
 
 interface CfManifest {
@@ -151,14 +160,20 @@ export async function importCurseForgeModpack(
     } catch { /* skip batch on error */ }
   }
 
-  // Download server-side mods
+  // Download server-side mods; track those with no download URL for the missing list
   let modsDownloaded = 0;
   let modsSkipped = 0;
+  const skippedProjectIds = new Map<number, number>(); // projectId → fileId
 
   for (const file of resolvedFiles) {
-    if (!file.downloadUrl) { modsSkipped++; continue; }
-
     const projectId = fileIdToProjectId.get(file.id);
+
+    if (!file.downloadUrl) {
+      if (projectId) skippedProjectIds.set(projectId, file.id);
+      modsSkipped++;
+      continue;
+    }
+
     if (!projectId) { modsSkipped++; continue; }
 
     const dest = path.join(targetDir, 'mods', file.fileName);
@@ -174,6 +189,34 @@ export async function importCurseForgeModpack(
     }
   }
 
+  // Look up mod info for skipped mods so we can show them in the UI
+  const missingMods: MissingMod[] = [];
+  if (skippedProjectIds.size > 0) {
+    try {
+      const modIds = Array.from(skippedProjectIds.keys());
+      const resp = await cfPost<{ data: { id: number; name: string; slug: string; links?: { websiteUrl?: string } }[] }>(
+        '/mods', { modIds }
+      );
+      for (const mod of resp.data) {
+        missingMods.push({
+          projectId: mod.id,
+          fileId: skippedProjectIds.get(mod.id) ?? 0,
+          name: mod.name,
+          slug: mod.slug,
+          url: mod.links?.websiteUrl ?? `https://www.curseforge.com/minecraft/mc-mods/${mod.slug}`,
+        });
+      }
+    } catch { /* best-effort — missing names degrade gracefully */ }
+  }
+
+  // Persist to disk so the UI can surface them without re-importing
+  const missingPath = path.join(targetDir, 'missing-mods.json');
+  if (missingMods.length > 0) {
+    fs.writeFileSync(missingPath, JSON.stringify(missingMods, null, 2));
+  } else if (fs.existsSync(missingPath)) {
+    fs.unlinkSync(missingPath);
+  }
+
   return {
     name: manifest.name,
     version: manifest.version ?? '1.0.0',
@@ -182,5 +225,6 @@ export async function importCurseForgeModpack(
     loaderVersion,
     modsDownloaded,
     modsSkipped,
+    missingMods,
   };
 }

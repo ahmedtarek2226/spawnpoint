@@ -7,9 +7,9 @@ import { nanoid } from 'nanoid';
 import yauzl from 'yauzl';
 import { importPrismExport } from '../services/PrismImporter';
 import { importMrpack } from '../services/MrpackImporter';
-import { importCurseForgeModpack } from '../services/CurseForgeModpackImporter';
-import { cfEnabled, cfGet } from '../services/CurseForgeClient';
+import { cfEnabled } from '../services/CurseForgeClient';
 import { createServer } from '../models/Server';
+import { enqueueInstallModrinth, enqueueInstallCurseForge } from '../services/JobRunner';
 import { SERVERS_DIR } from '../config';
 import { getHostDataDir } from '../services/hostDataDir';
 
@@ -47,6 +47,10 @@ router.post('/import', upload.single('export'), async (req: Request, res: Respon
       javaVersion,
       rconPassword: nanoid(24),
       hostDirectory,
+      modpackSource: null,
+      modpackProjectId: null,
+      modpackVersionId: null,
+      modpackSlug: null,
     });
 
     res.status(201).json({
@@ -100,6 +104,10 @@ router.post('/import-mrpack', upload.single('export'), async (req: Request, res:
       javaVersion,
       rconPassword: nanoid(24),
       hostDirectory,
+      modpackSource: null,
+      modpackProjectId: null,
+      modpackVersionId: null,
+      modpackSlug: null,
     });
 
     res.status(201).json({
@@ -232,71 +240,44 @@ router.get('/modpacks/estimate-memory', async (req: Request, res: Response, next
   } catch (err) { next(err); }
 });
 
-// Install a modpack directly from a Modrinth CDN URL (no file upload needed)
-router.post('/install-from-url', async (req: Request, res: Response, next: NextFunction) => {
+// Install a modpack directly from a Modrinth CDN URL — enqueues a background job
+router.post('/install-from-url', (req: Request, res: Response, next: NextFunction) => {
   try {
-    const { packUrl, name, port, memoryMb, javaVersion } = req.body as {
+    const { packUrl, name, port, memoryMb, javaVersion, projectId: bodyProjectId, versionId: bodyVersionId } = req.body as {
       packUrl: string; name?: string; port?: number; memoryMb?: number; javaVersion?: string;
+      projectId?: string; versionId?: string;
     };
     if (!packUrl) return next(Object.assign(new Error('packUrl is required'), { status: 400 }));
     if (!packUrl.startsWith('https://cdn.modrinth.com/')) {
       return next(Object.assign(new Error('Only Modrinth CDN URLs are accepted'), { status: 400 }));
     }
 
-    // Download the .mrpack to a temp file
-    const tmpPath = path.join(os.tmpdir(), `mrpack-${nanoid(10)}.mrpack`);
-    const resp = await fetch(packUrl, {
-      headers: { 'User-Agent': 'Spawnpoint/1.0 (self-hosted MC manager)' },
-    });
-    if (!resp.ok) throw new Error(`Download failed: ${resp.status}`);
-    fs.writeFileSync(tmpPath, Buffer.from(await resp.arrayBuffer()));
-
-    const id = nanoid(10);
-    const serverLocalDir = path.join(SERVERS_DIR, id);
-    const hostDirectory = path.join(await getHostDataDir(), 'servers', id);
-    fs.mkdirSync(serverLocalDir, { recursive: true });
-
-    let result;
-    try {
-      result = await importMrpack(tmpPath, serverLocalDir);
-    } finally {
-      fs.unlinkSync(tmpPath);
+    // Parse projectId and versionId from CDN URL:
+    // https://cdn.modrinth.com/data/{projectId}/versions/{versionId}/filename.mrpack
+    let parsedProjectId: string | null = bodyProjectId ?? null;
+    let parsedVersionId: string | null = bodyVersionId ?? null;
+    const cdnMatch = packUrl.match(/\/data\/([^/]+)\/versions\/([^/]+)\//);
+    if (cdnMatch) {
+      parsedProjectId = parsedProjectId ?? cdnMatch[1];
+      parsedVersionId = parsedVersionId ?? cdnMatch[2];
     }
 
-    const serverName = name || result.name;
-    const server = createServer({
-      id,
-      name: serverName,
-      type: result.serverType,
-      mcVersion: result.mcVersion,
-      port: port ?? 25565,
-      memoryMb: memoryMb ?? 4096,
-      jvmFlags: '-XX:+UseG1GC -XX:+ParallelRefProcEnabled -XX:MaxGCPauseMillis=200',
-      javaVersion: javaVersion ?? '21',
-      rconPassword: nanoid(24),
-      hostDirectory,
+    const job = enqueueInstallModrinth({
+      packUrl,
+      name,
+      port,
+      memoryMb,
+      javaVersion,
+      projectId: parsedProjectId,
+      versionId: parsedVersionId,
     });
 
-    res.status(201).json({
-      success: true,
-      data: {
-        server,
-        importInfo: {
-          name: result.name,
-          versionId: result.versionId,
-          mcVersion: result.mcVersion,
-          serverType: result.serverType,
-          loaderVersion: result.loaderVersion,
-          modsDownloaded: result.modsDownloaded,
-          modsSkipped: result.modsSkipped,
-        },
-      },
-    });
+    res.status(202).json({ success: true, data: { jobId: job.id } });
   } catch (err) { next(err); }
 });
 
-// Install a CurseForge modpack by project + file ID (no file upload)
-router.post('/install-from-curseforge', async (req: Request, res: Response, next: NextFunction) => {
+// Install a CurseForge modpack by project + file ID — enqueues a background job
+router.post('/install-from-curseforge', (req: Request, res: Response, next: NextFunction) => {
   if (!cfEnabled()) return next(Object.assign(new Error('CurseForge API key not configured'), { status: 503 }));
   try {
     const { projectId, fileId, name, port, memoryMb, javaVersion } = req.body as {
@@ -304,60 +285,8 @@ router.post('/install-from-curseforge', async (req: Request, res: Response, next
     };
     if (!projectId || !fileId) return next(Object.assign(new Error('projectId and fileId are required'), { status: 400 }));
 
-    // Resolve the download URL for this file
-    const fileResp = await cfGet<{ data: { downloadUrl: string | null; fileName: string } }>(
-      `/mods/${projectId}/files/${fileId}`
-    );
-    const { downloadUrl, fileName } = fileResp.data;
-    if (!downloadUrl) return next(Object.assign(new Error('This modpack file is not available for direct download. Please download manually from CurseForge.'), { status: 422 }));
-
-    // Download the .zip to a temp file
-    const tmpPath = path.join(os.tmpdir(), `cf-modpack-${nanoid(10)}.zip`);
-    const dlResp = await fetch(downloadUrl, { headers: { 'User-Agent': 'Spawnpoint/1.0' } });
-    if (!dlResp.ok) throw new Error(`Download failed: ${dlResp.status}`);
-    fs.writeFileSync(tmpPath, Buffer.from(await dlResp.arrayBuffer()));
-
-    const id = nanoid(10);
-    const serverLocalDir = path.join(SERVERS_DIR, id);
-    const hostDirectory = path.join(await getHostDataDir(), 'servers', id);
-    fs.mkdirSync(serverLocalDir, { recursive: true });
-
-    let result;
-    try {
-      result = await importCurseForgeModpack(tmpPath, serverLocalDir);
-    } finally {
-      fs.unlinkSync(tmpPath);
-    }
-
-    const serverName = name || result.name;
-    const server = createServer({
-      id,
-      name: serverName,
-      type: result.serverType,
-      mcVersion: result.mcVersion,
-      port: port ?? 25565,
-      memoryMb: memoryMb ?? 4096,
-      jvmFlags: '-XX:+UseG1GC -XX:+ParallelRefProcEnabled -XX:MaxGCPauseMillis=200',
-      javaVersion: javaVersion ?? '21',
-      rconPassword: nanoid(24),
-      hostDirectory,
-    });
-
-    res.status(201).json({
-      success: true,
-      data: {
-        server,
-        importInfo: {
-          name: result.name,
-          version: result.version,
-          mcVersion: result.mcVersion,
-          serverType: result.serverType,
-          loaderVersion: result.loaderVersion,
-          modsDownloaded: result.modsDownloaded,
-          modsSkipped: result.modsSkipped,
-        },
-      },
-    });
+    const job = enqueueInstallCurseForge({ projectId, fileId, name, port, memoryMb, javaVersion });
+    res.status(202).json({ success: true, data: { jobId: job.id } });
   } catch (err) { next(err); }
 });
 

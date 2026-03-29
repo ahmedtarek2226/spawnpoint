@@ -1,6 +1,6 @@
 import { getAllEnabledSchedules } from '../models/Schedule';
 import { getServer } from '../models/Server';
-import { startServer, stopServer, getServerRuntime } from './DockerManager';
+import { startServer, stopServer, restartServer, getServerRuntime } from './DockerManager';
 
 let interval: NodeJS.Timeout | null = null;
 // Track the last minute each schedule fired to avoid double-firing
@@ -37,6 +37,9 @@ async function tick(): Promise<void> {
       } else if (schedule.action === 'stop' && rt.status === 'running') {
         console.log(`[ServerScheduler] Stopping "${server.name}" (schedule ${schedule.id})`);
         await stopServer(server.id);
+      } else if (schedule.action === 'restart' && rt.status === 'running') {
+        console.log(`[ServerScheduler] Restarting "${server.name}" (schedule ${schedule.id})`);
+        await restartServer(server);
       }
     } catch (err) {
       console.error(`[ServerScheduler] Failed to ${schedule.action} "${server.name}":`, err);

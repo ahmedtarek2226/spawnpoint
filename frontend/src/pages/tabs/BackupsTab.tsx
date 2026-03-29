@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { Archive, RotateCw, Trash2, Download, Plus, Globe, HardDrive, Package, Upload, Clock, Loader2 } from 'lucide-react';
+import { Archive, RotateCw, Trash2, Download, Plus, Globe, HardDrive, Package, Upload, Clock, Loader2, CheckCircle2, FolderOpen, Copy, Check, X } from 'lucide-react';
 import { api } from '../../api/client';
 import { useServersStore } from '../../stores/serversStore';
 
@@ -32,11 +32,6 @@ interface BackupSchedule {
   backupLastAt: string | null;
 }
 
-function fmtSize(b: number) {
-  if (b < 1024 * 1024) return `${(b / 1024).toFixed(0)} KB`;
-  return `${(b / (1024 * 1024)).toFixed(1)} MB`;
-}
-
 const INTERVAL_OPTIONS = [
   { label: 'Every 6 hours', value: 6 },
   { label: 'Every 12 hours', value: 12 },
@@ -44,6 +39,200 @@ const INTERVAL_OPTIONS = [
   { label: 'Every 2 days', value: 48 },
   { label: 'Every week', value: 168 },
 ];
+
+function fmtSize(b: number) {
+  if (b < 1024 * 1024) return `${(b / 1024).toFixed(0)} KB`;
+  return `${(b / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+function fmtRelative(isoStr: string): string {
+  const diff = Date.now() - new Date(isoStr).getTime();
+  const m = Math.floor(diff / 60000);
+  const h = Math.floor(m / 60);
+  const d = Math.floor(h / 24);
+  if (d > 30) return new Date(isoStr).toLocaleString();
+  if (d > 0) return `${d}d ago`;
+  if (h > 0) return `${h}h ago`;
+  if (m > 0) return `${m}m ago`;
+  return 'just now';
+}
+
+function CopyButton({ text }: { text: string }) {
+  const [copied, setCopied] = useState(false);
+  function copy() {
+    navigator.clipboard.writeText(text).then(() => {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    });
+  }
+  return (
+    <button
+      onClick={copy}
+      className="p-1 rounded hover:bg-mc-border text-mc-muted hover:text-gray-300 transition-colors flex-shrink-0"
+      title="Copy path"
+    >
+      {copied ? <Check size={12} className="text-mc-green" /> : <Copy size={12} />}
+    </button>
+  );
+}
+
+function PathRow({ label, path, note }: { label: string; path: string; note?: string }) {
+  return (
+    <div className="space-y-1">
+      <div className="text-xs font-medium text-gray-400">{label}</div>
+      <div className="flex items-center gap-2 bg-mc-dark border border-mc-border rounded-lg px-3 py-2">
+        <FolderOpen size={13} className="text-mc-muted flex-shrink-0" />
+        <span className="font-mono text-xs text-gray-200 flex-1 break-all">{path}</span>
+        <CopyButton text={path} />
+      </div>
+      {note && <p className="text-xs text-mc-muted/70 pl-1">{note}</p>}
+    </div>
+  );
+}
+
+function WorldDirsCard({ serverId, worldDirs }: { serverId: string; worldDirs: string[] }) {
+  const server = useServersStore((s) => s.servers.find((sv) => sv.id === serverId));
+  const hostDir = server?.hostDirectory ?? '';
+
+  const levelName = worldDirs[0] ?? 'world';
+  const standard = new Set([levelName, `${levelName}_nether`, `${levelName}_the_end`]);
+  const modDirs = worldDirs.filter((d) => !standard.has(d));
+
+  return (
+    <div className="card border-l-2 border-blue-500 p-3 space-y-2.5">
+      <div className="flex items-center gap-2">
+        <Globe size={13} className="text-blue-400 flex-shrink-0" />
+        <span className="text-xs font-medium text-gray-300">World save locations</span>
+        {modDirs.length > 0 && (
+          <span className="ml-auto text-xs text-yellow-500/80 bg-yellow-900/20 border border-yellow-700/30 px-1.5 py-0.5 rounded">
+            {modDirs.length} mod dim{modDirs.length !== 1 ? 's' : ''}
+          </span>
+        )}
+      </div>
+      <div className="space-y-1.5">
+        {worldDirs.map((d) => {
+          const isMod = !standard.has(d);
+          return (
+            <div key={d} className="flex items-center gap-2 group">
+              <span className={`flex-shrink-0 text-xs ${isMod ? 'text-yellow-400' : 'text-blue-400'}`}>
+                {isMod ? <Package size={11} /> : <Globe size={11} />}
+              </span>
+              <code className="flex-1 font-mono text-xs text-gray-300 bg-mc-dark border border-mc-border rounded px-2 py-1 truncate min-w-0">
+                {hostDir ? `${hostDir}/${d}` : d}
+              </code>
+              {hostDir && <CopyButton text={`${hostDir}/${d}`} />}
+            </div>
+          );
+        })}
+      </div>
+      <p className="text-xs text-mc-muted">World backups include these folders. Full backups include everything.</p>
+    </div>
+  );
+}
+
+function SaveLocationsModal({ serverId, worldDirs, onClose }: {
+  serverId: string;
+  worldDirs: string[];
+  onClose: () => void;
+}) {
+  const server = useServersStore((s) => s.servers.find((sv) => sv.id === serverId));
+  if (!server) return null;
+
+  const hostDir = server.hostDirectory;
+  const levelName = worldDirs[0] ?? 'world';
+  const standardDirs = new Set([levelName, `${levelName}_nether`, `${levelName}_the_end`]);
+  const modDirs = worldDirs.filter((d) => !standardDirs.has(d));
+  const standardFound = worldDirs.filter((d) => standardDirs.has(d));
+  const isSplitDims = standardFound.includes(`${levelName}_nether`) || standardFound.includes(`${levelName}_the_end`);
+
+  function dimNote(dir: string): string {
+    if (dir.endsWith('_nether')) return 'Nether dimension — managed separately by Spigot/Paper.';
+    if (dir.endsWith('_the_end')) return 'The End dimension — managed separately by Spigot/Paper.';
+    if (!isSplitDims && modDirs.length === 0)
+      return 'Overworld chunks, player data, level.dat. Nether lives at DIM-1/ and The End at DIM1/ inside this folder.';
+    return 'Overworld chunks, player data, level.dat.';
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4" onClick={onClose}>
+      <div className="bg-mc-panel border border-mc-border rounded-xl shadow-2xl w-full max-w-lg overflow-hidden" onClick={(e) => e.stopPropagation()}>
+        {/* Header */}
+        <div className="flex items-center gap-2.5 px-5 py-4 border-b border-mc-border">
+          <Globe size={16} className="text-mc-green" />
+          <div>
+            <h2 className="text-sm font-semibold text-gray-200">World Save Locations</h2>
+            <p className="text-xs text-mc-muted mt-0.5">Detected by scanning for <code className="font-mono text-gray-400">region/</code> folders on disk.</p>
+          </div>
+          <button onClick={onClose} className="ml-auto text-mc-muted hover:text-gray-300 transition-colors p-1">
+            <X size={15} />
+          </button>
+        </div>
+
+        {/* Content */}
+        <div className="p-5 space-y-4 overflow-y-auto max-h-[70vh]">
+          {worldDirs.length > 0 ? (
+            <>
+              {/* Standard dirs */}
+              {standardFound.length > 0 && (
+                <div className="space-y-2">
+                  <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide">Standard worlds</p>
+                  {standardFound.map((dir) => (
+                    <div key={dir} className="border border-mc-border rounded-lg overflow-hidden">
+                      <div className="flex items-center gap-2 px-3 py-2 bg-mc-dark border-b border-mc-border">
+                        <Globe size={12} className="text-mc-green flex-shrink-0" />
+                        <span className="text-xs font-semibold text-gray-300">{dir}/</span>
+                      </div>
+                      <div className="px-3 py-2.5 space-y-2">
+                        <p className="text-xs text-mc-muted">{dimNote(dir)}</p>
+                        <PathRow label="Host path" path={`${hostDir}/${dir}`} />
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {/* Mod-added dimension dirs */}
+              {modDirs.length > 0 && (
+                <div className="space-y-2">
+                  <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide">Mod dimensions</p>
+                  {modDirs.map((dir) => (
+                    <div key={dir} className="border border-yellow-700/40 rounded-lg overflow-hidden">
+                      <div className="flex items-center gap-2 px-3 py-2 bg-yellow-900/10 border-b border-yellow-700/30">
+                        <Package size={12} className="text-yellow-400 flex-shrink-0" />
+                        <span className="text-xs font-semibold text-gray-300">{dir}/</span>
+                        <span className="ml-auto text-xs text-yellow-500/70">mod dimension</span>
+                      </div>
+                      <div className="px-3 py-2.5 space-y-2">
+                        <p className="text-xs text-mc-muted">Custom dimension added by a mod. Contains its own chunk data.</p>
+                        <PathRow label="Host path" path={`${hostDir}/${dir}`} />
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {/* Note about world backup vs full backup */}
+              <div className="bg-mc-dark border border-mc-border/50 rounded-lg px-3 py-2.5 text-xs text-mc-muted space-y-1.5">
+                <p className="text-gray-300 font-medium">World backup vs Full backup</p>
+                <p>A <span className="text-gray-300">World backup</span> captures all the folders listed above. A <span className="text-gray-300">Full backup</span> captures the entire server directory — use it if a mod stores save data outside these folders (e.g. in <code className="font-mono text-gray-400">config/</code> or a custom top-level folder without a <code className="font-mono text-gray-400">region/</code> subfolder).</p>
+              </div>
+            </>
+          ) : (
+            <div className="py-6 text-center space-y-2">
+              <Globe size={28} className="text-mc-muted opacity-30 mx-auto" />
+              <p className="text-sm text-mc-muted">No world folders found yet.</p>
+              <p className="text-xs text-mc-muted/60">Start the server at least once to generate world data.</p>
+              <div className="mt-4 border border-mc-border rounded-lg px-3 py-2.5 text-left">
+                <p className="text-xs text-mc-muted mb-2">Once generated, the world will appear at:</p>
+                <PathRow label="Expected location" path={`${hostDir}/world`} />
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
 
 export default function BackupsTab({ serverId }: { serverId: string }) {
   const backingUp = useServersStore((s) => s.servers.find((sv) => sv.id === serverId)?.runtime.backingUp ?? false);
@@ -55,6 +244,7 @@ export default function BackupsTab({ serverId }: { serverId: string }) {
   const [backupType, setBackupType] = useState<'full' | 'world'>('world');
   const [error, setError] = useState('');
   const [restoring, setRestoring] = useState<string | null>(null);
+  const [restoreSuccess, setRestoreSuccess] = useState<string | null>(null);
   const [uploading, setUploading] = useState(false);
   const uploadRef = useRef<HTMLInputElement>(null);
   const [schedule, setSchedule] = useState<BackupSchedule>({
@@ -64,6 +254,8 @@ export default function BackupsTab({ serverId }: { serverId: string }) {
     backupLastAt: null,
   });
   const [savingSchedule, setSavingSchedule] = useState(false);
+  const [scheduleSaved, setScheduleSaved] = useState(false);
+  const [successToast, setSuccessToast] = useState<string | null>(null);
   const [announceEnabled, setAnnounceEnabled] = useState(false);
   const [announceMessage, setAnnounceMessage] = useState('World save starting, expect brief lag…');
 
@@ -101,6 +293,7 @@ export default function BackupsTab({ serverId }: { serverId: string }) {
   }
 
   async function saveSchedule(patch: Partial<BackupSchedule>) {
+    const prev = schedule;
     const next = { ...schedule, ...patch };
     setSchedule(next);
     setSavingSchedule(true);
@@ -110,7 +303,10 @@ export default function BackupsTab({ serverId }: { serverId: string }) {
         backupIntervalHours: next.backupIntervalHours,
         backupRetainCount: next.backupRetainCount,
       });
+      setScheduleSaved(true);
+      setTimeout(() => setScheduleSaved(false), 2000);
     } catch (e: unknown) {
+      setSchedule(prev);
       setError(e instanceof Error ? e.message : 'Failed to save schedule');
     }
     setSavingSchedule(false);
@@ -128,6 +324,8 @@ export default function BackupsTab({ serverId }: { serverId: string }) {
         announceMessage: announceEnabled ? announceMessage : undefined,
       });
       setBaseLabel(suggestedBase);
+      setSuccessToast('Backup created successfully');
+      setTimeout(() => setSuccessToast(null), 3000);
       load();
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : 'Backup failed');
@@ -143,8 +341,10 @@ export default function BackupsTab({ serverId }: { serverId: string }) {
     )) return;
     setRestoring(backup.id);
     setError('');
+    setRestoreSuccess(null);
     try {
       await api.post(`/servers/${serverId}/backups/${backup.id}/restore`);
+      setRestoreSuccess(backup.label);
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : 'Restore failed');
     }
@@ -159,7 +359,11 @@ export default function BackupsTab({ serverId }: { serverId: string }) {
     try {
       const form = new FormData();
       form.append('file', file);
-      await fetch(`/api/servers/${serverId}/backups/upload`, { method: 'POST', body: form });
+      const res = await fetch(`/api/servers/${serverId}/backups/upload`, { method: 'POST', body: form });
+      const json = await res.json();
+      if (!res.ok || !json.success) throw new Error(json.error?.message ?? 'Upload failed');
+      setSuccessToast('Backup imported');
+      setTimeout(() => setSuccessToast(null), 3000);
       load();
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : 'Upload failed');
@@ -180,77 +384,57 @@ export default function BackupsTab({ serverId }: { serverId: string }) {
 
   const backups = data?.backups ?? [];
   const worldDirs = data?.worldDirs ?? [];
-  const modpackInfo = data?.modpackInfo ?? {};
-
-  function modpackSummary(): string | null {
-    const parts: string[] = [];
-    if (modpackInfo.name) parts.push(modpackInfo.name);
-    if (modpackInfo.version) parts.push(`v${modpackInfo.version}`);
-    if (!modpackInfo.name && modpackInfo.mcVersion) parts.push(`MC ${modpackInfo.mcVersion}`);
-    if (modpackInfo.loader) {
-      const loaderLabel = modpackInfo.loaderVersion
-        ? `${modpackInfo.loader} ${modpackInfo.loaderVersion}`
-        : modpackInfo.loader;
-      parts.push(loaderLabel);
-    }
-    return parts.length > 0 ? parts.join(' · ') : null;
-  }
 
   return (
-    <div className="p-4 space-y-4">
+    <div className="p-4 space-y-4 overflow-y-auto h-full">
+      {/* In-progress banner */}
       {backingUp && (
-        <div className="flex items-center gap-2 bg-mc-green/10 border border-mc-green/30 rounded px-3 py-2 text-sm text-mc-green">
+        <div className="flex items-center gap-2.5 bg-mc-green/10 border border-mc-green/30 rounded-lg px-4 py-3 text-sm text-mc-green">
           <Loader2 size={14} className="animate-spin flex-shrink-0" />
-          Auto-backup in progress…
-        </div>
-      )}
-      {/* World save info */}
-      {worldDirs.length > 0 && (
-        <div className="card p-3 flex items-start gap-3 text-sm">
-          <Globe size={15} className="text-mc-green mt-0.5 flex-shrink-0" />
-          <div>
-            <div className="text-gray-300 font-medium mb-1">World save directories</div>
-            <div className="flex flex-wrap gap-1.5">
-              {worldDirs.map((d) => (
-                <span key={d} className="font-mono text-xs bg-mc-dark border border-mc-border rounded px-2 py-0.5 text-gray-300">
-                  {d}/
-                </span>
-              ))}
-            </div>
-            <p className="text-mc-muted text-xs mt-1.5">
-              World-save backups include only these directories. Full backups include everything (mods, configs, logs, world).
-            </p>
-          </div>
+          <span>Auto-backup in progress…</span>
         </div>
       )}
 
-      {/* Modpack info */}
-      {modpackSummary() && (
-        <div className="card p-3 flex items-center gap-3 text-sm">
-          <Package size={15} className="text-mc-green flex-shrink-0" />
-          <div className="min-w-0flex-1">
-            <span className="text-gray-300 font-medium">{modpackInfo.name ?? 'Modpack'}</span>
-            {modpackInfo.version && <span className="text-mc-green ml-2 font-mono text-xs">v{modpackInfo.version}</span>}
-            {(modpackInfo.mcVersion || modpackInfo.loader) && (
-              <span className="text-mc-muted text-xs ml-2">
-                {[modpackInfo.mcVersion && `MC ${modpackInfo.mcVersion}`, modpackInfo.loader].filter(Boolean).join(' · ')}
-              </span>
-            )}
-          </div>
+      {error && (
+        <div className="bg-red-900/30 border border-red-700/50 text-red-400 rounded-lg px-3 py-2 text-sm">{error}</div>
+      )}
+      {successToast && (
+        <div className="flex items-center gap-2 bg-mc-green/10 border border-mc-green/30 rounded-lg px-3 py-2 text-sm text-mc-green">
+          <CheckCircle2 size={14} className="flex-shrink-0" />
+          {successToast}
         </div>
       )}
+
+      {restoreSuccess && (
+        <div className="flex items-center gap-2.5 bg-mc-green/10 border border-mc-green/30 rounded-lg px-4 py-3 text-sm text-mc-green">
+          <CheckCircle2 size={15} className="flex-shrink-0" />
+          <div>
+            <span className="font-medium">Restore complete.</span>
+            <span className="text-mc-green/70 ml-1">
+              "{restoreSuccess}" has been restored. The server has been restarted if it was running.
+            </span>
+          </div>
+          <button onClick={() => setRestoreSuccess(null)} className="ml-auto text-mc-green/50 hover:text-mc-green transition-colors flex-shrink-0">
+            ×
+          </button>
+        </div>
+      )}
+
+      {/* World dirs */}
+      {worldDirs.length > 0 && <WorldDirsCard serverId={serverId} worldDirs={worldDirs} />}
 
       {/* Auto-backup schedule */}
-      <div className="card p-3 space-y-3">
+      <div className="card border-l-2 border-yellow-500 p-4 space-y-3">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
-            <Clock size={14} className="text-mc-green" />
-            <span className="text-sm font-medium text-gray-300">Auto backup</span>
+            <Clock size={14} className="text-yellow-400" />
+            <span className="text-sm font-medium text-gray-300">Auto-backup</span>
+            {scheduleSaved && <span className="text-xs text-mc-green font-medium">Saved ✓</span>}
           </div>
           <button
             onClick={() => saveSchedule({ backupEnabled: !schedule.backupEnabled })}
             disabled={savingSchedule}
-            className={`text-xs px-3 py-1 rounded border transition-colors ${
+            className={`text-xs px-3 py-1.5 rounded border transition-colors ${
               schedule.backupEnabled
                 ? 'border-mc-green bg-mc-green/10 text-mc-green'
                 : 'border-mc-border text-mc-muted hover:border-gray-500'
@@ -261,11 +445,11 @@ export default function BackupsTab({ serverId }: { serverId: string }) {
         </div>
 
         {schedule.backupEnabled && (
-          <div className="space-y-2 pt-1 border-t border-mc-border">
+          <div className="space-y-2.5 pt-2 border-t border-mc-border/40">
             <div className="flex items-center gap-3">
-              <label className="text-xs text-mc-muted w-24">Interval</label>
+              <label className="text-xs text-mc-muted w-20 flex-shrink-0">Interval</label>
               <select
-                className="input text-xs py-1 flex-1"
+                className="input text-xs py-1.5 flex-1"
                 value={schedule.backupIntervalHours}
                 onChange={e => saveSchedule({ backupIntervalHours: Number(e.target.value) })}
               >
@@ -275,9 +459,9 @@ export default function BackupsTab({ serverId }: { serverId: string }) {
               </select>
             </div>
             <div className="flex items-center gap-3">
-              <label className="text-xs text-mc-muted w-24">Keep last</label>
+              <label className="text-xs text-mc-muted w-20 flex-shrink-0">Keep last</label>
               <select
-                className="input text-xs py-1 flex-1"
+                className="input text-xs py-1.5 flex-1"
                 value={schedule.backupRetainCount}
                 onChange={e => saveSchedule({ backupRetainCount: Number(e.target.value) })}
               >
@@ -287,69 +471,69 @@ export default function BackupsTab({ serverId }: { serverId: string }) {
               </select>
             </div>
             {schedule.backupLastAt && (
-              <p className="text-xs text-mc-muted pt-0.5">
-                Last auto backup: {new Date(schedule.backupLastAt).toLocaleString()}
+              <p className="text-xs text-mc-muted">
+                Last backup: {new Date(schedule.backupLastAt).toLocaleString()}
               </p>
             )}
           </div>
         )}
       </div>
 
-      {error && (
-        <div className="bg-red-900/30 border border-red-700 text-red-400 rounded px-3 py-2 text-sm">{error}</div>
-      )}
-
       {/* Create backup */}
-      <div className="card p-3 space-y-3">
-        <div className="text-sm font-medium text-gray-300">Create backup</div>
-        <div className="flex gap-2">
-          <input
-            className="input flex-1"
-            value={label}
-            onChange={(e) => {
-              const v = e.target.value.replace(/ /g, '_');
-              const suffix = `_${backupType}`;
-              setBaseLabel(v.endsWith(suffix) ? v.slice(0, -suffix.length) : v);
-            }}
-            onKeyDown={(e) => e.key === 'Enter' && create()}
-            placeholder="Label (optional)"
-          />
+      <div className="card border-l-2 border-mc-green p-4 space-y-3">
+        <div className="flex items-center gap-2">
+          <Plus size={14} className="text-mc-green" />
+          <span className="text-sm font-medium text-gray-300">Create backup</span>
         </div>
-        <div className="flex gap-2">
+
+        <input
+          className="input w-full"
+          value={label}
+          onChange={(e) => {
+            const v = e.target.value.replace(/ /g, '_');
+            const suffix = `_${backupType}`;
+            setBaseLabel(v.endsWith(suffix) ? v.slice(0, -suffix.length) : v);
+          }}
+          onKeyDown={(e) => e.key === 'Enter' && create()}
+          placeholder="Label (optional)"
+        />
+
+        <div className="grid grid-cols-2 gap-2">
           <button
             onClick={() => setBackupType('world')}
-            className={`flex-1 flex items-center justify-center gap-2 py-2 px-3 rounded text-sm border transition-colors ${
+            className={`flex items-center gap-2.5 py-2.5 px-3 rounded-lg text-sm border transition-colors ${
               backupType === 'world'
                 ? 'border-mc-green bg-mc-green/10 text-mc-green'
                 : 'border-mc-border text-mc-muted hover:border-gray-500'
             }`}
           >
-            <Globe size={14} />
+            <Globe size={15} className="flex-shrink-0" />
             <div className="text-left">
-              <div className="font-medium">World save</div>
-              <div className="text-xs opacity-70">World data only · fast</div>
+              <div className="font-medium text-xs">World save</div>
+              <div className="text-xs opacity-60">World data only · fast</div>
             </div>
           </button>
           <button
             onClick={() => setBackupType('full')}
-            className={`flex-1 flex items-center justify-center gap-2 py-2 px-3 rounded text-sm border transition-colors ${
+            className={`flex items-center gap-2.5 py-2.5 px-3 rounded-lg text-sm border transition-colors ${
               backupType === 'full'
                 ? 'border-mc-green bg-mc-green/10 text-mc-green'
                 : 'border-mc-border text-mc-muted hover:border-gray-500'
             }`}
           >
-            <HardDrive size={14} />
+            <HardDrive size={15} className="flex-shrink-0" />
             <div className="text-left">
-              <div className="font-medium">Full backup</div>
-              <div className="text-xs opacity-70">Everything · slower</div>
+              <div className="font-medium text-xs">Full backup</div>
+              <div className="text-xs opacity-60">Everything · slower</div>
             </div>
           </button>
         </div>
+
         <div className="flex items-center gap-2">
           <button
             type="button"
             onClick={() => setAnnounceEnabled(v => !v)}
-            className={`text-xs px-2.5 py-1 rounded border transition-colors flex-shrink-0 ${
+            className={`text-xs px-2.5 py-1.5 rounded border transition-colors flex-shrink-0 ${
               announceEnabled
                 ? 'border-mc-green bg-mc-green/10 text-mc-green'
                 : 'border-mc-border text-mc-muted hover:border-gray-500'
@@ -359,68 +543,81 @@ export default function BackupsTab({ serverId }: { serverId: string }) {
           </button>
           {announceEnabled && (
             <input
-              className="input flex-1 text-xs py-1"
+              className="input flex-1 text-xs py-1.5"
               value={announceMessage}
               onChange={e => setAnnounceMessage(e.target.value)}
               placeholder="Message to broadcast in-game…"
             />
           )}
         </div>
-        <div className="flex gap-2">
+
+        <div className="flex gap-2 pt-1">
           <button onClick={create} className="btn-primary flex-1" disabled={creating}>
-            <Plus size={14} /> {creating ? 'Creating…' : `Create ${backupType === 'world' ? 'world save' : 'full'} backup`}
+            {creating
+              ? <><Loader2 size={13} className="animate-spin" /> Creating…</>
+              : <><Plus size={13} /> Create {backupType === 'world' ? 'world save' : 'full'} backup</>
+            }
           </button>
           <input ref={uploadRef} type="file" accept=".tar.gz" className="hidden" onChange={onUpload} />
           <button onClick={() => uploadRef.current?.click()} className="btn-ghost" disabled={uploading} title="Import backup (.tar.gz)">
-            <Upload size={14} /> {uploading ? 'Uploading…' : 'Import'}
+            <Upload size={13} /> {uploading ? 'Uploading…' : 'Import'}
           </button>
         </div>
       </div>
 
       {/* Backup list */}
       {loading ? (
-        <div className="text-mc-muted text-sm">Loading…</div>
+        <div className="flex items-center gap-2 text-mc-muted text-sm py-4">
+          <Loader2 size={14} className="animate-spin" /> Loading…
+        </div>
       ) : backups.length === 0 ? (
-        <div className="card p-8 text-center text-mc-muted">
-          <Archive size={32} className="mx-auto mb-2 opacity-40" />
-          <div>No backups yet</div>
+        <div className="flex flex-col items-center justify-center py-12 text-center gap-3">
+          <Archive size={36} className="text-mc-muted opacity-30" />
+          <div>
+            <p className="text-sm text-mc-muted">No backups yet</p>
+            <p className="text-xs text-mc-muted/60 mt-1">Create your first backup above</p>
+          </div>
         </div>
       ) : (
         <div className="card overflow-hidden">
+          <div className="px-4 py-2.5 border-b border-mc-border bg-mc-panel/40 flex items-center gap-2">
+            <Archive size={13} className="text-mc-muted" />
+            <span className="text-xs font-medium text-mc-muted">{backups.length} backup{backups.length !== 1 ? 's' : ''}</span>
+          </div>
           <table className="w-full text-sm">
             <thead className="text-xs text-mc-muted border-b border-mc-border bg-mc-panel/60">
               <tr>
-                <th className="text-left px-4 py-2">Label</th>
-                <th className="text-left px-4 py-2">Type</th>
-                <th className="text-right px-4 py-2">Size</th>
-                <th className="text-right px-4 py-2">Created</th>
-                <th className="px-4 py-2" />
+                <th className="text-left px-4 py-2.5">Label</th>
+                <th className="text-left px-4 py-2.5 hidden sm:table-cell">Type</th>
+                <th className="text-right px-4 py-2.5">Size</th>
+                <th className="text-right px-4 py-2.5 hidden md:table-cell">Created</th>
+                <th className="px-4 py-2.5 w-24" />
               </tr>
             </thead>
             <tbody>
               {backups.map((b) => (
-                <tr key={b.id} className="border-b border-mc-border/40 hover:bg-mc-panel/40">
-                  <td className="px-4 py-2 text-gray-200">{b.label}</td>
-                  <td className="px-4 py-2">
-                    <span className={`inline-flex items-center gap-1 text-xs px-1.5 py-0.5 rounded ${
+                <tr key={b.id} className="border-b border-mc-border/40 hover:bg-mc-panel/40 transition-colors">
+                  <td className="px-4 py-2.5 text-gray-200">{b.label}</td>
+                  <td className="px-4 py-2.5 hidden sm:table-cell">
+                    <span className={`inline-flex items-center gap-1 text-xs px-1.5 py-0.5 rounded border ${
                       b.type === 'world'
-                        ? 'bg-blue-900/40 text-blue-300 border border-blue-700/40'
-                        : 'bg-mc-panel text-mc-muted border border-mc-border'
+                        ? 'bg-blue-900/30 text-blue-300 border-blue-700/30'
+                        : 'bg-mc-panel text-mc-muted border-mc-border'
                     }`}>
                       {b.type === 'world' ? <Globe size={10} /> : <HardDrive size={10} />}
                       {b.type === 'world' ? 'World' : 'Full'}
                     </span>
                   </td>
-                  <td className="px-4 py-2 text-right text-mc-muted text-xs">{fmtSize(b.sizeBytes)}</td>
-                  <td className="px-4 py-2 text-right text-mc-muted text-xs">
-                    {new Date(b.createdAt).toLocaleString()}
+                  <td className="px-4 py-2.5 text-right text-mc-muted text-xs">{fmtSize(b.sizeBytes)}</td>
+                  <td className="px-4 py-2.5 text-right text-mc-muted text-xs hidden md:table-cell" title={new Date(b.createdAt).toLocaleString()}>
+                    {fmtRelative(b.createdAt)}
                   </td>
-                  <td className="px-4 py-2">
-                    <div className="flex items-center gap-1 justify-end">
+                  <td className="px-4 py-2.5">
+                    <div className="flex items-center gap-0.5 justify-end">
                       <a
                         href={`/api/servers/${serverId}/backups/${b.id}/download`}
                         download
-                        className="p-1 rounded hover:bg-mc-border text-mc-muted hover:text-gray-300"
+                        className="p-1.5 rounded hover:bg-mc-border text-mc-muted hover:text-gray-300 transition-colors"
                         title="Download"
                       >
                         <Download size={13} />
@@ -428,14 +625,14 @@ export default function BackupsTab({ serverId }: { serverId: string }) {
                       <button
                         onClick={() => restore(b)}
                         disabled={restoring === b.id}
-                        className="p-1 rounded hover:bg-yellow-900/30 text-mc-muted hover:text-yellow-400 disabled:opacity-40"
+                        className="p-1.5 rounded hover:bg-yellow-900/30 text-mc-muted hover:text-yellow-400 disabled:opacity-40 transition-colors"
                         title="Restore"
                       >
                         <RotateCw size={13} className={restoring === b.id ? 'animate-spin' : ''} />
                       </button>
                       <button
                         onClick={() => remove(b.id)}
-                        className="p-1 rounded hover:bg-red-900/30 text-mc-muted hover:text-red-400"
+                        className="p-1.5 rounded hover:bg-red-900/30 text-mc-muted hover:text-red-400 transition-colors"
                         title="Delete"
                       >
                         <Trash2 size={13} />

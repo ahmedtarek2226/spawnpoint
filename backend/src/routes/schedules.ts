@@ -22,8 +22,8 @@ router.post('/', (req: Request, res: Response, next: NextFunction) => {
       action: string; hour: number; minute?: number; days?: number[]; enabled?: boolean;
     };
 
-    if (!['start', 'stop'].includes(action)) {
-      return next(Object.assign(new Error('action must be "start" or "stop"'), { status: 400 }));
+    if (!['start', 'stop', 'restart'].includes(action)) {
+      return next(Object.assign(new Error('action must be "start", "stop", or "restart"'), { status: 400 }));
     }
     if (typeof hour !== 'number' || hour < 0 || hour > 23) {
       return next(Object.assign(new Error('hour must be 0–23'), { status: 400 }));
@@ -32,7 +32,7 @@ router.post('/', (req: Request, res: Response, next: NextFunction) => {
     const schedule = createSchedule({
       id: nanoid(10),
       serverId: server.id,
-      action: action as 'start' | 'stop',
+      action: action as 'start' | 'stop' | 'restart',
       hour,
       minute: minute ?? 0,
       days: days ?? [0, 1, 2, 3, 4, 5, 6],

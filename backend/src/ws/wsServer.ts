@@ -9,6 +9,7 @@ import { parseCookies, SESSION_COOKIE } from '../middleware/auth';
 
 const consoleSubs = new Map<string, Set<WebSocket>>();
 const metricsSubs = new Map<string, Set<WebSocket>>();
+const allClients = new Set<WebSocket>();
 
 function sub(map: Map<string, Set<WebSocket>>, serverId: string, ws: WebSocket): void {
   if (!map.has(serverId)) map.set(serverId, new Set());
@@ -28,6 +29,10 @@ function send(ws: WebSocket, msg: WsOutbound): void {
   if (ws.readyState === WebSocket.OPEN) {
     ws.send(JSON.stringify(msg));
   }
+}
+
+export function broadcastAll(msg: WsOutbound): void {
+  for (const ws of allClients) send(ws, msg);
 }
 
 export function broadcastToServer(serverId: string, msg: WsOutbound): void {
@@ -66,6 +71,8 @@ export function createWsServer(server: http.Server): WebSocketServer {
   });
 
   wss.on('connection', (ws) => {
+    allClients.add(ws);
+
     ws.on('message', async (raw) => {
       let msg: WsInbound;
       try { msg = JSON.parse(raw.toString()); } catch { return; }
@@ -105,8 +112,8 @@ export function createWsServer(server: http.Server): WebSocketServer {
       }
     });
 
-    ws.on('close', () => unsubAll(ws));
-    ws.on('error', () => unsubAll(ws));
+    ws.on('close', () => { allClients.delete(ws); unsubAll(ws); });
+    ws.on('error', () => { allClients.delete(ws); unsubAll(ws); });
   });
 
   return wss;

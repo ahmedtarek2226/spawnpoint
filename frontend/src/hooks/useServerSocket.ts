@@ -1,5 +1,6 @@
-import { useEffect, useRef, useCallback } from 'react';
+import { useEffect, useRef } from 'react';
 import { useServersStore } from '../stores/serversStore';
+import { useJobStore } from '../stores/jobStore';
 
 type MsgHandler = (msg: Record<string, unknown>) => void;
 
@@ -66,6 +67,8 @@ function registerStoreHandler(): void {
       updateCrashDiagnosis(msg.serverId as string, msg.issues as never);
     } else if (msg.type === 'backup_status') {
       updateRuntime(msg.serverId as string, { backingUp: msg.backingUp as boolean });
+    } else if (msg.type === 'job_update') {
+      useJobStore.getState().upsertJob(msg.job as never);
     }
   });
 }

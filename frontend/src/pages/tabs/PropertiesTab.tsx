@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Save, Info } from 'lucide-react';
+import { Save, Check, Users, Globe, Swords, Cpu, Network, ShieldCheck, Image, Settings2 } from 'lucide-react';
 import { api } from '../../api/client';
 
 type PropType = 'boolean' | 'number' | 'select' | 'text';
@@ -56,6 +56,52 @@ const KNOWN: Record<string, PropMeta> = {
   'generate-structures':   { description: 'Generate structures (villages, dungeons, etc.) in the world.', type: 'boolean' },
 };
 
+// Groups define display order and visual sections
+const GROUPS: { label: string; icon: React.ElementType; color: string; keys: string[] }[] = [
+  {
+    label: 'Players',
+    icon: Users,
+    color: 'border-mc-green',
+    keys: ['motd', 'max-players', 'online-mode', 'white-list', 'enforce-whitelist', 'player-idle-timeout', 'op-permission-level', 'function-permission-level'],
+  },
+  {
+    label: 'World',
+    icon: Globe,
+    color: 'border-blue-500',
+    keys: ['level-name', 'level-seed', 'level-type', 'allow-nether', 'max-world-size', 'generate-structures'],
+  },
+  {
+    label: 'Gameplay',
+    icon: Swords,
+    color: 'border-yellow-500',
+    keys: ['difficulty', 'gamemode', 'force-gamemode', 'pvp', 'hardcore', 'allow-flight', 'spawn-monsters', 'spawn-animals', 'spawn-npcs', 'spawn-protection', 'enable-command-block'],
+  },
+  {
+    label: 'Performance',
+    icon: Cpu,
+    color: 'border-purple-500',
+    keys: ['view-distance', 'simulation-distance', 'max-tick-time', 'sync-chunk-writes', 'use-native-transport'],
+  },
+  {
+    label: 'Network',
+    icon: Network,
+    color: 'border-cyan-500',
+    keys: ['server-port', 'server-ip', 'network-compression-threshold', 'rate-limit'],
+  },
+  {
+    label: 'Security',
+    icon: ShieldCheck,
+    color: 'border-red-500',
+    keys: ['enable-rcon', 'enforce-secure-profile', 'log-ips', 'enable-jmx-monitoring'],
+  },
+  {
+    label: 'Resource Pack',
+    icon: Image,
+    color: 'border-orange-500',
+    keys: ['resource-pack', 'resource-pack-prompt', 'require-resource-pack'],
+  },
+];
+
 function validate(key: string, value: string): string {
   const meta = KNOWN[key];
   if (!meta) return '';
@@ -75,39 +121,19 @@ function PropRow({ propKey, value, onChange }: {
   value: string;
   onChange: (v: string) => void;
 }) {
-  const [showTip, setShowTip] = useState(false);
   const meta = KNOWN[propKey];
   const error = validate(propKey, value);
 
   return (
-    <div className="flex items-start gap-3">
-      <div className="w-60 flex-shrink-0 flex items-center gap-1 pt-1.5">
-        <label className="text-xs text-gray-400 font-mono truncate" title={propKey}>{propKey}</label>
-        {meta && (
-          <div className="relative flex-shrink-0">
-            <button
-              type="button"
-              onMouseEnter={() => setShowTip(true)}
-              onMouseLeave={() => setShowTip(false)}
-              className="text-mc-muted hover:text-mc-green"
-            >
-              <Info size={11} />
-            </button>
-            {showTip && (
-              <div className="absolute left-5 top-0 z-20 w-64 bg-mc-panel border border-mc-border rounded px-2.5 py-2 text-xs text-gray-300 shadow-lg">
-                {meta.description}
-                {meta.type === 'number' && (meta.min !== undefined || meta.max !== undefined) && (
-                  <div className="text-mc-muted mt-1">
-                    Range: {meta.min ?? '–'} – {meta.max ?? '–'}
-                  </div>
-                )}
-              </div>
-            )}
-          </div>
-        )}
+    <div className="grid grid-cols-2 gap-x-6 gap-y-1 py-2.5 border-b border-mc-border/30 last:border-0 items-start">
+      {/* Left: key + description */}
+      <div>
+        <label className="text-xs text-gray-400 font-mono block" title={propKey}>{propKey}</label>
+        {meta && <p className="text-xs text-mc-muted/70 mt-0.5 leading-snug">{meta.description}</p>}
       </div>
 
-      <div className="flex-1 min-w-0">
+      {/* Right: control */}
+      <div>
         {meta?.type === 'boolean' ? (
           <button
             type="button"
@@ -118,21 +144,60 @@ function PropRow({ propKey, value, onChange }: {
                 : 'border-mc-border text-mc-muted hover:border-gray-500'
             }`}
           >
-            {value === 'true' ? 'true' : 'false'}
+            {value === 'true' ? 'Enabled' : 'Disabled'}
           </button>
         ) : meta?.type === 'select' ? (
-          <select className="input text-xs py-1.5" value={value} onChange={e => onChange(e.target.value)}>
+          <select className="input text-xs py-1.5 w-full max-w-xs" value={value} onChange={e => onChange(e.target.value)}>
             {meta.options!.map(o => <option key={o} value={o}>{o}</option>)}
           </select>
         ) : (
           <input
-            className={`input w-full ${error ? 'border-red-700' : ''}`}
+            className={`input w-full max-w-xs ${error ? 'border-red-700' : ''}`}
             value={value}
             onChange={e => onChange(e.target.value)}
           />
         )}
-        {error && <p className="text-xs text-red-400 mt-0.5">{error}</p>}
+        {error && <p className="text-xs text-red-400 mt-1">{error}</p>}
       </div>
+    </div>
+  );
+}
+
+function GroupSection({ group, props, onChange }: {
+  group: typeof GROUPS[0];
+  props: Record<string, string>;
+  onChange: (key: string, v: string) => void;
+}) {
+  const [collapsed, setCollapsed] = useState(false);
+  const Icon = group.icon;
+  const presentKeys = group.keys.filter(k => k in props);
+  if (presentKeys.length === 0) return null;
+
+  return (
+    <div className={`card border-l-2 ${group.color} overflow-hidden`}>
+      <button
+        type="button"
+        onClick={() => setCollapsed(c => !c)}
+        className="w-full flex items-center gap-2.5 px-4 py-3 hover:bg-mc-panel/30 transition-colors"
+      >
+        <Icon size={13} className="text-mc-muted flex-shrink-0" />
+        <span className="text-sm font-medium text-gray-300">{group.label}</span>
+        <span className="text-xs text-mc-muted ml-auto">{collapsed ? `${presentKeys.length} props` : ''}</span>
+        <svg
+          className={`w-3 h-3 text-mc-muted transition-transform flex-shrink-0 ${collapsed ? '-rotate-90' : ''}`}
+          fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}
+        >
+          <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
+        </svg>
+      </button>
+
+      {!collapsed && (
+        <div className="px-4 pb-3">
+          {presentKeys.map(key => (
+            <PropRow key={key} propKey={key} value={props[key]} onChange={(v) => onChange(key, v)} />
+          ))}
+        </div>
+      )}
     </div>
   );
 }
@@ -165,22 +230,41 @@ export default function PropertiesTab({ serverId }: { serverId: string }) {
     }
   }
 
+  function onChange(key: string, v: string) {
+    setProps(p => ({ ...p, [key]: v }));
+  }
+
   if (loading) return <div className="p-6 text-mc-muted">Loading…</div>;
 
   if (Object.keys(props).length === 0) {
-    return <div className="p-6 text-mc-muted">No server.properties found. Start the server once to generate it.</div>;
+    return (
+      <div className="p-6 flex flex-col items-center gap-2 text-center">
+        <Settings2 size={32} className="text-mc-muted opacity-30" />
+        <p className="text-mc-muted text-sm">No server.properties found.</p>
+        <p className="text-xs text-mc-muted/60">Start the server once to generate it.</p>
+      </div>
+    );
   }
 
-  const knownEntries = Object.entries(props).filter(([k]) => k in KNOWN).sort(([a], [b]) => a.localeCompare(b));
+  const knownGroupKeys = new Set(GROUPS.flatMap(g => g.keys));
+  const ungroupedKnown = Object.keys(props).filter(k => k in KNOWN && !knownGroupKeys.has(k)).sort();
   const unknownEntries = Object.entries(props).filter(([k]) => !(k in KNOWN)).sort(([a], [b]) => a.localeCompare(b));
   const hasErrors = Object.entries(props).some(([k, v]) => validate(k, v));
 
   return (
     <div className="flex flex-col h-full">
-      <div className="flex items-center justify-between p-4 border-b border-mc-border">
-        <span className="text-sm text-mc-muted">server.properties</span>
-        <button onClick={save} className="btn-primary" disabled={saving || hasErrors}>
-          <Save size={14} /> {saved ? 'Saved!' : saving ? 'Saving…' : 'Save'}
+      {/* Toolbar */}
+      <div className="flex items-center justify-between px-4 py-3 border-b border-mc-border bg-mc-panel/30 flex-shrink-0">
+        <div className="flex items-center gap-2">
+          <Settings2 size={14} className="text-mc-muted" />
+          <span className="text-sm text-mc-muted font-mono">server.properties</span>
+        </div>
+        <button
+          onClick={save}
+          className={`btn-primary text-sm gap-1.5 ${saved ? 'bg-mc-green/80' : ''}`}
+          disabled={saving || hasErrors}
+        >
+          {saved ? <><Check size={14} /> Saved!</> : <><Save size={14} /> {saving ? 'Saving…' : 'Save changes'}</>}
         </button>
       </div>
 
@@ -188,29 +272,43 @@ export default function PropertiesTab({ serverId }: { serverId: string }) {
         <div className="mx-4 mt-4 bg-red-900/30 border border-red-700 text-red-400 rounded px-3 py-2 text-sm">{error}</div>
       )}
 
+      {/* Grouped properties */}
       <div className="flex-1 overflow-y-auto p-4">
-        <div className="space-y-2.5 max-w-2xl">
-          {knownEntries.map(([key, value]) => (
-            <PropRow
-              key={key}
-              propKey={key}
-              value={value}
-              onChange={(v) => setProps(p => ({ ...p, [key]: v }))}
+        <div className="space-y-3">
+          {GROUPS.map(group => (
+            <GroupSection
+              key={group.label}
+              group={group}
+              props={props}
+              onChange={onChange}
             />
           ))}
 
+          {ungroupedKnown.length > 0 && (
+            <div className="card border-l-2 border-mc-border overflow-hidden">
+              <div className="px-4 py-3 flex items-center gap-2">
+                <Settings2 size={13} className="text-mc-muted flex-shrink-0" />
+                <span className="text-sm font-medium text-gray-300">Other Known</span>
+              </div>
+              <div className="px-4 pb-3">
+                {ungroupedKnown.map(key => (
+                  <PropRow key={key} propKey={key} value={props[key]} onChange={(v) => onChange(key, v)} />
+                ))}
+              </div>
+            </div>
+          )}
+
           {unknownEntries.length > 0 && (
-            <>
-              <div className="pt-3 pb-1 text-xs text-mc-muted border-t border-mc-border">Other properties</div>
-              {unknownEntries.map(([key, value]) => (
-                <PropRow
-                  key={key}
-                  propKey={key}
-                  value={value}
-                  onChange={(v) => setProps(p => ({ ...p, [key]: v }))}
-                />
-              ))}
-            </>
+            <div className="card overflow-hidden">
+              <div className="px-4 py-3 border-b border-mc-border/40">
+                <span className="text-xs text-mc-muted font-medium uppercase tracking-wide">Other / Custom Properties</span>
+              </div>
+              <div className="px-4 pb-3">
+                {unknownEntries.map(([key, value]) => (
+                  <PropRow key={key} propKey={key} value={value} onChange={(v) => onChange(key, v)} />
+                ))}
+              </div>
+            </div>
           )}
         </div>
       </div>

@@ -48,3 +48,17 @@ CREATE TABLE IF NOT EXISTS server_schedules (
 );
 
 CREATE INDEX IF NOT EXISTS idx_server_schedules_server_id ON server_schedules(server_id);
+
+CREATE TABLE IF NOT EXISTS jobs (
+  id          TEXT PRIMARY KEY,
+  type        TEXT NOT NULL,
+  status      TEXT NOT NULL DEFAULT 'queued',
+  label       TEXT NOT NULL,
+  server_id   TEXT,
+  progress    INTEGER NOT NULL DEFAULT 0,
+  step        TEXT NOT NULL DEFAULT '',
+  error       TEXT,
+  result      TEXT,
+  created_at  TEXT NOT NULL DEFAULT (datetime('now')),
+  updated_at  TEXT NOT NULL DEFAULT (datetime('now'))
+);

@@ -1,4 +1,6 @@
 import { Router, Request, Response, NextFunction } from 'express';
+import dns from 'dns';
+import net from 'net';
 
 const router = Router();
 
@@ -8,6 +10,33 @@ const ALLOWED_HOSTS = new Set([
   'media.forgecdn.net',
   'mediafilez.forgecdn.net',
 ]);
+
+// Block private/loopback IP ranges to prevent SSRF via DNS rebinding
+function isPrivateIp(ip: string): boolean {
+  // Strip IPv6 mapped IPv4 prefix
+  const addr = ip.startsWith('::ffff:') ? ip.slice(7) : ip;
+  if (addr === '::1' || addr === 'localhost') return true;
+  if (!net.isIPv4(addr)) return false; // block non-IPv4 to be safe
+  const parts = addr.split('.').map(Number);
+  const [a, b] = parts;
+  return (
+    a === 10 ||
+    a === 127 ||
+    (a === 172 && b >= 16 && b <= 31) ||
+    (a === 192 && b === 168) ||
+    (a === 169 && b === 254) || // link-local
+    (a === 0)
+  );
+}
+
+async function resolvedToPrivate(hostname: string): Promise<boolean> {
+  try {
+    const addrs = await dns.promises.resolve4(hostname);
+    return addrs.some(isPrivateIp);
+  } catch {
+    return true; // block on DNS failure
+  }
+}
 
 interface CacheEntry {
   data: Buffer;
@@ -36,6 +65,11 @@ router.get('/', async (req: Request, res: Response, next: NextFunction) => {
       return next(Object.assign(new Error('Invalid URL'), { status: 400 }));
     }
     if (!ALLOWED_HOSTS.has(parsed.hostname)) {
+      return next(Object.assign(new Error('Image host not allowed'), { status: 403 }));
+    }
+
+    // Resolve hostname and block private IPs (prevents SSRF via DNS rebinding)
+    if (await resolvedToPrivate(parsed.hostname)) {
       return next(Object.assign(new Error('Image host not allowed'), { status: 403 }));
     }
 

@@ -14,9 +14,16 @@ import { safePath, dirSizeSync, readFile, writeFile, parseProperties, stringifyP
 
 const router = Router();
 
+function stripSensitive(s: ReturnType<typeof getServer>) {
+  if (!s) return s;
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  const { rconPassword: _, ...safe } = s;
+  return safe;
+}
+
 router.get('/', (_req, res) => {
   const servers = listServers().map(s => ({
-    ...s,
+    ...stripSensitive(s),
     runtime: getServerRuntime(s.id),
   }));
   res.json({ success: true, data: servers });
@@ -25,7 +32,7 @@ router.get('/', (_req, res) => {
 router.get('/:id', (req, res, next) => {
   const server = getServer(req.params.id);
   if (!server) return next(Object.assign(new Error('Server not found'), { status: 404 }));
-  res.json({ success: true, data: { ...server, runtime: getServerRuntime(server.id) } });
+  res.json({ success: true, data: { ...stripSensitive(server), runtime: getServerRuntime(server.id) } });
 });
 
 router.post('/', async (req: Request, res: Response, next: NextFunction) => {
@@ -57,6 +64,10 @@ router.post('/', async (req: Request, res: Response, next: NextFunction) => {
       javaVersion: javaVersion ?? '21',
       rconPassword: nanoid(24),
       hostDirectory,
+      modpackSource: null,
+      modpackProjectId: null,
+      modpackVersionId: null,
+      modpackSlug: null,
     });
 
     res.status(201).json({ success: true, data: server });
@@ -147,6 +158,19 @@ router.get('/:id/disk-usage', (req: Request, res: Response, next: NextFunction) 
   } catch (err) { next(err); }
 });
 
+function isNewerVersion(latest: string, current: string): boolean {
+  const parse = (v: string) => v.split('.').map((n) => parseInt(n, 10) || 0);
+  const l = parse(latest);
+  const c = parse(current);
+  for (let i = 0; i < Math.max(l.length, c.length); i++) {
+    const lv = l[i] ?? 0;
+    const cv = c[i] ?? 0;
+    if (lv > cv) return true;
+    if (lv < cv) return false;
+  }
+  return false;
+}
+
 // MC version check — cached manifest from Mojang
 let versionCache: { latestRelease: string; latestSnapshot: string; fetchedAt: number } | null = null;
 
@@ -169,7 +193,7 @@ router.get('/:id/version-check', async (req: Request, res: Response, next: NextF
         current: server.mcVersion,
         latestRelease: versionCache.latestRelease,
         latestSnapshot: versionCache.latestSnapshot,
-        hasUpdate: versionCache.latestRelease !== server.mcVersion,
+        hasUpdate: isNewerVersion(versionCache.latestRelease, server.mcVersion),
       },
     });
   } catch (err) { next(err); }

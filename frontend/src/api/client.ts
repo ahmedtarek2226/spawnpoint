@@ -37,10 +37,11 @@ export function imgProxy(url: string | undefined | null): string | undefined {
   return `/api/image-proxy?url=${encodeURIComponent(url)}`;
 }
 
-export async function uploadFiles(path: string, files: FileList | File[], extra?: Record<string, string>): Promise<void> {
+export async function uploadFiles(path: string, files: FileList | File[], extra?: Record<string, string>, relativePaths?: string[]): Promise<void> {
   const fd = new FormData();
   for (const f of Array.from(files)) fd.append('files', f);
   if (extra) for (const [k, v] of Object.entries(extra)) fd.append(k, v);
+  if (relativePaths) fd.append('relativePaths', JSON.stringify(relativePaths));
   const res = await fetch(`${BASE}${path}`, { method: 'POST', body: fd });
   const json = await res.json();
   if (!res.ok || !json.success) throw new ApiError(res.status, json.error?.message ?? 'Upload failed');

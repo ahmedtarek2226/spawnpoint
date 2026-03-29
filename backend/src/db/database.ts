@@ -33,4 +33,8 @@ export function initDb(): void {
   try { db.exec("ALTER TABLE servers ADD COLUMN backup_retain_count INTEGER NOT NULL DEFAULT 5"); } catch { /* already exists */ }
   try { db.exec("ALTER TABLE servers ADD COLUMN backup_last_at TEXT"); } catch { /* already exists */ }
   try { db.exec("ALTER TABLE servers ADD COLUMN discord_webhook_url TEXT"); } catch { /* already exists */ }
+  try { db.exec("ALTER TABLE servers ADD COLUMN modpack_source TEXT"); } catch { /* already exists */ }
+  try { db.exec("ALTER TABLE servers ADD COLUMN modpack_project_id TEXT"); } catch { /* already exists */ }
+  try { db.exec("ALTER TABLE servers ADD COLUMN modpack_version_id TEXT"); } catch { /* already exists */ }
+  try { db.exec("ALTER TABLE servers ADD COLUMN modpack_slug TEXT"); } catch { /* already exists */ }
 }
