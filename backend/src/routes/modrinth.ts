@@ -126,6 +126,75 @@ router.get('/installed-ids', async (req: Request, res: Response, next: NextFunct
   } catch (err) { next(err); }
 });
 
+// Resolve a CurseForge-restricted mod via Modrinth: find by slug/name, pick the
+// best compatible version, download it, and return the saved filename.
+router.post('/resolve-missing', async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const server = getServer(req.params.id);
+    if (!server) return next(new ApiError('Server not found', 404));
+
+    const { name } = req.body as { name: string };
+    if (!name) return next(new ApiError('name required', 400));
+
+    const info = SERVER_LOADER_MAP[server.type];
+    if (!info) return next(new ApiError('Unsupported server type', 400));
+
+    const UA = 'Spawnpoint/1.0 (self-hosted MC manager)';
+
+    // Search Modrinth by name — only filter by project_type so we cast a wide net,
+    // then check each candidate for a compatible version (right MC version + loader).
+    const facets = [[`project_type:${info.projectType}`]];
+    const params = new URLSearchParams({
+      query: name,
+      facets: JSON.stringify(facets),
+      limit: '5',
+      index: 'relevance',
+    });
+    const searchResp = await fetch(`https://api.modrinth.com/v2/search?${params}`, {
+      headers: { 'User-Agent': UA },
+    });
+    if (!searchResp.ok) return next(new ApiError('Modrinth search failed', 502));
+    const searchData = await searchResp.json() as { hits: { project_id: string }[] };
+    if (!searchData.hits.length) return next(new ApiError('Mod not found on Modrinth', 404));
+
+    // Find the first candidate that has a compatible version
+    const vParams = new URLSearchParams({
+      game_versions: JSON.stringify([server.mcVersion]),
+      loaders: JSON.stringify(info.loaders),
+    });
+    let versions: { files: { url: string; filename: string; primary: boolean }[] }[] = [];
+    for (const hit of searchData.hits) {
+      const vResp = await fetch(`https://api.modrinth.com/v2/project/${hit.project_id}/version?${vParams}`, {
+        headers: { 'User-Agent': UA },
+      });
+      if (!vResp.ok) continue;
+      const v = await vResp.json() as typeof versions;
+      if (v.length > 0) { versions = v; break; }
+    }
+    if (!versions.length) return next(new ApiError('No compatible version found on Modrinth', 404));
+
+    // Pick primary file from the latest compatible version
+    const bestVersion = versions[0];
+    const file = bestVersion.files.find((f) => f.primary) ?? bestVersion.files[0];
+    if (!file) return next(new ApiError('No downloadable file in Modrinth version', 404));
+
+    if (!file.url.startsWith('https://cdn.modrinth.com/')) {
+      return next(new ApiError('Unexpected CDN URL', 400));
+    }
+
+    // 5. Download to mods dir
+    const safeName = path.basename(file.filename).replace(/[^a-zA-Z0-9._\-]/g, '_');
+    const destDir = getModsDir(path.join(SERVERS_DIR, server.id), server.type);
+    fs.mkdirSync(destDir, { recursive: true });
+
+    const dlResp = await fetch(file.url, { headers: { 'User-Agent': UA } });
+    if (!dlResp.ok) throw new Error(`Download failed: ${dlResp.status}`);
+    fs.writeFileSync(path.join(destDir, safeName), Buffer.from(await dlResp.arrayBuffer()));
+
+    res.json({ success: true, data: { fileName: safeName } });
+  } catch (err) { next(err); }
+});
+
 // Install a mod (download primary file into mods/plugins dir)
 router.post('/install', async (req: Request, res: Response, next: NextFunction) => {
   try {

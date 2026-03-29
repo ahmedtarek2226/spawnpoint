@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useCallback, lazy, Suspense } from 'react';
 import {
   Folder, FileText, ChevronRight, Upload, Trash2, X, Download,
-  Plus, FolderPlus, RefreshCw, FilePen, FolderUp, ChevronDown,
+  Plus, FolderPlus, RefreshCw, FilePen, FolderUp, ChevronDown, PackageOpen, Pencil,
 } from 'lucide-react';
 import { api, uploadFiles } from '../../api/client';
 
@@ -40,18 +40,26 @@ export default function FilesTab({ serverId }: { serverId: string }) {
   // Editor state
   const [editPath, setEditPath] = useState<string | null>(null);
 
+  // File action modal
+  const [actionEntry, setActionEntry] = useState<Entry | null>(null);
+  const [actionDelConfirm, setActionDelConfirm] = useState(false);
+  const [actionRenaming, setActionRenaming] = useState(false);
+  const [renameValue, setRenameValue] = useState('');
+  const [actionError, setActionError] = useState('');
+  const [unzipping, setUnzipping] = useState(false);
+  const renameInputRef = useRef<HTMLInputElement>(null);
+
+  // Row-level inline rename / delete (for both files and folders)
+  const [renamingPath, setRenamingPath] = useState<string | null>(null);
+  const [rowRenameValue, setRowRenameValue] = useState('');
+  const [confirmDeletePath, setConfirmDeletePath] = useState<string | null>(null);
+  const rowRenameRef = useRef<HTMLInputElement>(null);
+
   // Create file/folder
   const [creating, setCreating] = useState<'file' | 'folder' | null>(null);
   const [createName, setCreateName] = useState('');
   const createInputRef = useRef<HTMLInputElement>(null);
 
-  // Rename
-  const [renamingPath, setRenamingPath] = useState<string | null>(null);
-  const [renameValue, setRenameValue] = useState('');
-  const renameInputRef = useRef<HTMLInputElement>(null);
-
-  // Confirm delete
-  const [confirmDeletePath, setConfirmDeletePath] = useState<string | null>(null);
   // Upload conflict modal
   const [conflictModal, setConflictModal] = useState<{ conflicts: string[]; pending: File[] } | null>(null);
 
@@ -94,32 +102,19 @@ export default function FilesTab({ serverId }: { serverId: string }) {
     return () => document.removeEventListener('mousedown', handleClick);
   }, [uploadMenuOpen]);
 
-  // Focus create input when it appears
   useEffect(() => {
     if (creating) setTimeout(() => createInputRef.current?.focus(), 0);
   }, [creating]);
 
-  // Focus rename input when it appears
   useEffect(() => {
-    if (renamingPath) setTimeout(() => renameInputRef.current?.focus(), 0);
+    if (actionRenaming) setTimeout(() => renameInputRef.current?.focus(), 0);
+  }, [actionRenaming]);
+
+  useEffect(() => {
+    if (renamingPath) setTimeout(() => rowRenameRef.current?.focus(), 0);
   }, [renamingPath]);
 
-  const MAX_EDIT_SIZE = 1 * 1024 * 1024; // 1 MB
-
-  async function openFile(entry: Entry) {
-    if (entry.isDir) { loadDir(entry.path); return; }
-    if (!isTextFile(entry.name)) {
-      window.open(`/api/servers/${serverId}/files/download?path=${encodeURIComponent(entry.path)}`, '_blank');
-      return;
-    }
-    if (entry.size > MAX_EDIT_SIZE) {
-      setDirError(`"${entry.name}" is too large to edit (${fmtSize(entry.size)}). Download it instead.`);
-      return;
-    }
-    setEditPath(entry.path);
-  }
-
-  async function deleteEntry(entry: Entry, e: React.MouseEvent) {
+  async function rowDelete(entry: Entry, e: React.MouseEvent) {
     e.stopPropagation();
     if (confirmDeletePath !== entry.path) { setConfirmDeletePath(entry.path); return; }
     setConfirmDeletePath(null);
@@ -128,6 +123,78 @@ export default function FilesTab({ serverId }: { serverId: string }) {
       loadDir(dirPath);
     } catch (err: unknown) {
       setDirError(err instanceof Error ? err.message : 'Delete failed');
+    }
+  }
+
+  async function rowRename(entry: Entry) {
+    const newName = rowRenameValue.trim();
+    setRenamingPath(null);
+    if (!newName || newName === entry.name) return;
+    const newPath = dirPath ? `${dirPath}/${newName}` : newName;
+    try {
+      await api.post(`/servers/${serverId}/files/rename`, { from: entry.path, to: newPath });
+      loadDir(dirPath);
+    } catch (err: unknown) {
+      setDirError(err instanceof Error ? err.message : 'Rename failed');
+    }
+  }
+
+  const MAX_EDIT_SIZE = 1 * 1024 * 1024; // 1 MB
+
+  function openEntry(entry: Entry) {
+    if (entry.isDir) { loadDir(entry.path); return; }
+    setActionEntry(entry);
+    setActionDelConfirm(false);
+    setActionRenaming(false);
+    setActionError('');
+  }
+
+  function closeModal() {
+    setActionEntry(null);
+    setActionDelConfirm(false);
+    setActionRenaming(false);
+    setActionError('');
+    setUnzipping(false);
+  }
+
+  async function modalDelete() {
+    if (!actionEntry) return;
+    if (!actionDelConfirm) { setActionDelConfirm(true); return; }
+    try {
+      await api.delete(`/servers/${serverId}/files`, { path: actionEntry.path });
+      closeModal();
+      loadDir(dirPath);
+    } catch (err: unknown) {
+      setActionError(err instanceof Error ? err.message : 'Delete failed');
+    }
+  }
+
+  async function modalRename() {
+    if (!actionEntry) return;
+    const newName = renameValue.trim();
+    if (!newName || newName === actionEntry.name) { setActionRenaming(false); return; }
+    const newPath = dirPath ? `${dirPath}/${newName}` : newName;
+    try {
+      await api.post(`/servers/${serverId}/files/rename`, { from: actionEntry.path, to: newPath });
+      closeModal();
+      loadDir(dirPath);
+    } catch (err: unknown) {
+      setActionError(err instanceof Error ? err.message : 'Rename failed');
+    }
+  }
+
+  async function modalUnzip() {
+    if (!actionEntry) return;
+    setUnzipping(true);
+    setActionError('');
+    try {
+      await api.post(`/servers/${serverId}/files/unzip`, { path: actionEntry.path });
+      showUploadToast(`Extracted ${actionEntry.name}`);
+      closeModal();
+      loadDir(dirPath);
+    } catch (err: unknown) {
+      setActionError(err instanceof Error ? err.message : 'Extract failed');
+      setUnzipping(false);
     }
   }
 
@@ -169,7 +236,7 @@ export default function FilesTab({ serverId }: { serverId: string }) {
     if (toUpload.length === 0) return;
     setUploading(true);
     try {
-      await uploadFiles(`/servers/${serverId}/files/upload`, toUpload, { path: dirPath });
+      await uploadFiles(`/servers/${serverId}/files/upload`, toUpload, { path: dirPath, raw: 'true' });
       showUploadToast(`Uploaded ${toUpload.length} file${toUpload.length !== 1 ? 's' : ''}`);
       loadDir(dirPath);
     } catch (err: unknown) {
@@ -187,7 +254,7 @@ export default function FilesTab({ serverId }: { serverId: string }) {
     const relativePaths = fileArr.map((f) => (f as File & { webkitRelativePath: string }).webkitRelativePath || f.name);
     setUploading(true);
     try {
-      await uploadFiles(`/servers/${serverId}/files/upload`, fileArr, { path: dirPath }, relativePaths);
+      await uploadFiles(`/servers/${serverId}/files/upload`, fileArr, { path: dirPath, raw: 'true' }, relativePaths);
       showUploadToast(`Uploaded ${fileArr.length} file${fileArr.length !== 1 ? 's' : ''}`);
       loadDir(dirPath);
     } catch (err: unknown) {
@@ -208,7 +275,6 @@ export default function FilesTab({ serverId }: { serverId: string }) {
       } else {
         await api.put(`/servers/${serverId}/files/content`, { path: fullPath, content: '' });
         loadDir(dirPath);
-        // Open the new file for editing immediately
         setEditPath(fullPath);
       }
     } catch (err: unknown) {
@@ -216,21 +282,6 @@ export default function FilesTab({ serverId }: { serverId: string }) {
     }
     setCreating(null);
     setCreateName('');
-  }
-
-  async function submitRename(entry: Entry) {
-    const newName = renameValue.trim();
-    setRenamingPath(null);
-    if (!newName || newName === entry.name) return;
-    const newPath = dirPath ? `${dirPath}/${newName}` : newName;
-    try {
-      // Read + write + delete for files; mkdir + delete for dirs isn't ideal but
-      // the backend has no rename endpoint — add one here instead
-      await api.post(`/servers/${serverId}/files/rename`, { from: entry.path, to: newPath });
-      loadDir(dirPath);
-    } catch (err: unknown) {
-      setDirError(err instanceof Error ? err.message : 'Rename failed');
-    }
   }
 
   const breadcrumbs = dirPath ? dirPath.split('/').filter(Boolean) : [];
@@ -243,6 +294,9 @@ export default function FilesTab({ serverId }: { serverId: string }) {
       </Suspense>
     );
   }
+
+  const isZip = (name: string) => name.toLowerCase().endsWith('.zip');
+  const canEdit = (entry: Entry) => isTextFile(entry.name) && entry.size <= MAX_EDIT_SIZE;
 
   // ── Directory browser ────────────────────────────────────────────────────
   return (
@@ -318,8 +372,9 @@ export default function FilesTab({ serverId }: { serverId: string }) {
       </div>
 
       {dirError && (
-        <div className="mx-3 mt-2 text-red-400 text-xs bg-red-900/20 border border-red-800 rounded px-2 py-1">
-          {dirError}
+        <div className="mx-3 mt-2 text-red-400 text-xs bg-red-900/20 border border-red-800 rounded px-2 py-1 flex items-center justify-between">
+          <span>{dirError}</span>
+          <button onClick={() => setDirError('')} className="ml-2 text-red-400 hover:text-red-300"><X size={11} /></button>
         </div>
       )}
       {uploadToast && (
@@ -347,31 +402,97 @@ export default function FilesTab({ serverId }: { serverId: string }) {
               </ul>
             )}
             <div className="flex flex-col gap-2 pt-1">
-              <button
-                className="btn-primary w-full text-xs"
-                onClick={() => { const p = conflictModal.pending; setConflictModal(null); doUpload(p, 'replace'); }}
-              >
-                Replace existing
-              </button>
-              <button
-                className="btn-ghost w-full text-xs"
-                onClick={() => { const p = conflictModal.pending; setConflictModal(null); doUpload(p, 'rename'); }}
-              >
-                Keep both (auto-rename)
-              </button>
-              <button
-                className="btn-ghost w-full text-xs"
-                onClick={() => { const p = conflictModal.pending; setConflictModal(null); doUpload(p, 'skip'); }}
-              >
-                Skip conflicting files
-              </button>
-              <button
-                className="text-mc-muted hover:text-gray-300 text-xs py-1"
-                onClick={() => setConflictModal(null)}
-              >
-                Cancel
-              </button>
+              <button className="btn-primary w-full text-xs" onClick={() => { const p = conflictModal.pending; setConflictModal(null); doUpload(p, 'replace'); }}>Replace existing</button>
+              <button className="btn-ghost w-full text-xs" onClick={() => { const p = conflictModal.pending; setConflictModal(null); doUpload(p, 'rename'); }}>Keep both (auto-rename)</button>
+              <button className="btn-ghost w-full text-xs" onClick={() => { const p = conflictModal.pending; setConflictModal(null); doUpload(p, 'skip'); }}>Skip conflicting files</button>
+              <button className="text-mc-muted hover:text-gray-300 text-xs py-1" onClick={() => setConflictModal(null)}>Cancel</button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* File action modal */}
+      {actionEntry && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60" onClick={closeModal}>
+          <div className="bg-mc-panel border border-mc-border rounded-lg shadow-xl w-full max-w-sm mx-4 p-5" onClick={(e) => e.stopPropagation()}>
+            {/* Header */}
+            <div className="flex items-start gap-3 mb-5">
+              <FileText size={18} className={`mt-0.5 flex-shrink-0 ${isZip(actionEntry.name) ? 'text-orange-400' : isTextFile(actionEntry.name) ? 'text-mc-green' : 'text-mc-muted'}`} />
+              <div className="flex-1 min-w-0">
+                <div className="font-mono text-sm text-gray-100 break-all">{actionEntry.name}</div>
+                <div className="text-xs text-mc-muted mt-0.5">{fmtSize(actionEntry.size)} · {fmtDate(actionEntry.mtime)}</div>
+              </div>
+              <button onClick={closeModal} className="text-mc-muted hover:text-gray-300 flex-shrink-0"><X size={14} /></button>
+            </div>
+
+            {actionError && (
+              <div className="mb-3 text-xs text-red-400 bg-red-900/20 border border-red-800 rounded px-2 py-1.5">{actionError}</div>
+            )}
+
+            {/* Rename inline */}
+            {actionRenaming ? (
+              <div className="mb-4">
+                <input
+                  ref={renameInputRef}
+                  className="input w-full text-sm font-mono"
+                  value={renameValue}
+                  onChange={(e) => setRenameValue(e.target.value)}
+                  onKeyDown={(e) => { if (e.key === 'Enter') modalRename(); if (e.key === 'Escape') setActionRenaming(false); }}
+                />
+                <div className="flex gap-2 mt-2">
+                  <button className="btn-primary flex-1 text-xs" onClick={modalRename}>Save</button>
+                  <button className="btn-ghost flex-1 text-xs" onClick={() => setActionRenaming(false)}>Cancel</button>
+                </div>
+              </div>
+            ) : (
+              <div className="grid grid-cols-2 gap-2">
+                {canEdit(actionEntry) && (
+                  <button
+                    onClick={() => { closeModal(); setEditPath(actionEntry.path); }}
+                    className="flex items-center gap-2 px-3 py-2.5 rounded-lg border border-mc-border hover:border-mc-green/40 hover:bg-mc-green/5 text-sm text-gray-200 hover:text-mc-green transition-colors"
+                  >
+                    <Pencil size={14} className="text-mc-green" /> Edit
+                  </button>
+                )}
+                {isZip(actionEntry.name) && (
+                  <button
+                    onClick={modalUnzip}
+                    disabled={unzipping}
+                    className="flex items-center gap-2 px-3 py-2.5 rounded-lg border border-mc-border hover:border-mc-green/40 hover:bg-mc-green/5 text-sm text-gray-200 hover:text-mc-green transition-colors disabled:opacity-50"
+                  >
+                    {unzipping
+                      ? <span className="w-3.5 h-3.5 border border-current border-t-transparent rounded-full animate-spin" />
+                      : <PackageOpen size={14} className="text-mc-green" />}
+                    {unzipping ? 'Extracting…' : 'Extract'}
+                  </button>
+                )}
+                <a
+                  href={`/api/servers/${serverId}/files/download?path=${encodeURIComponent(actionEntry.path)}`}
+                  download
+                  onClick={closeModal}
+                  className="flex items-center gap-2 px-3 py-2.5 rounded-lg border border-mc-border hover:border-blue-400/40 hover:bg-blue-500/5 text-sm text-gray-200 hover:text-blue-300 transition-colors"
+                >
+                  <Download size={14} className="text-blue-400" /> Download
+                </a>
+                <button
+                  onClick={() => { setActionRenaming(true); setRenameValue(actionEntry.name); }}
+                  className="flex items-center gap-2 px-3 py-2.5 rounded-lg border border-mc-border hover:border-mc-border/80 hover:bg-white/5 text-sm text-gray-200 transition-colors"
+                >
+                  <FilePen size={14} className="text-mc-muted" /> Rename
+                </button>
+                <button
+                  onClick={modalDelete}
+                  className={`flex items-center gap-2 px-3 py-2.5 rounded-lg border text-sm transition-colors ${
+                    actionDelConfirm
+                      ? 'border-red-600 bg-red-900/30 text-red-300 hover:bg-red-900/50'
+                      : 'border-mc-border hover:border-red-700/50 hover:bg-red-900/10 text-gray-200 hover:text-red-400'
+                  }`}
+                >
+                  <Trash2 size={14} className={actionDelConfirm ? 'text-red-400' : 'text-mc-muted'} />
+                  {actionDelConfirm ? 'Confirm delete' : 'Delete'}
+                </button>
+              </div>
+            )}
           </div>
         </div>
       )}
@@ -387,7 +508,7 @@ export default function FilesTab({ serverId }: { serverId: string }) {
                 <th className="text-left px-4 py-2">Name</th>
                 <th className="text-right px-4 py-2 hidden sm:table-cell">Size</th>
                 <th className="text-right px-4 py-2 hidden md:table-cell">Modified</th>
-                <th className="px-4 py-2 w-16" />
+                <th className="px-4 py-2 w-20" />
               </tr>
             </thead>
             <tbody>
@@ -443,7 +564,7 @@ export default function FilesTab({ serverId }: { serverId: string }) {
                 <tr
                   key={entry.path}
                   className="border-b border-mc-border/40 hover:bg-mc-panel/60 cursor-pointer group"
-                  onClick={() => openFile(entry)}
+                  onClick={() => openEntry(entry)}
                 >
                   <td className="px-4 py-2">
                     {renamingPath === entry.path ? (
@@ -453,22 +574,22 @@ export default function FilesTab({ serverId }: { serverId: string }) {
                           : <FileText size={14} className="text-mc-muted flex-shrink-0" />
                         }
                         <input
-                          ref={renameInputRef}
+                          ref={rowRenameRef}
                           className="bg-transparent border-b border-mc-green outline-none text-sm text-gray-100 flex-1"
-                          value={renameValue}
-                          onChange={(e) => setRenameValue(e.target.value)}
+                          value={rowRenameValue}
+                          onChange={(e) => setRowRenameValue(e.target.value)}
                           onKeyDown={(e) => {
-                            if (e.key === 'Enter') submitRename(entry);
+                            if (e.key === 'Enter') rowRename(entry);
                             if (e.key === 'Escape') setRenamingPath(null);
                           }}
-                          onBlur={() => submitRename(entry)}
+                          onBlur={() => rowRename(entry)}
                         />
                       </div>
                     ) : (
                       <div className="flex items-center gap-2">
                         {entry.isDir
                           ? <Folder size={14} className="text-yellow-400 flex-shrink-0" />
-                          : <FileText size={14} className={`flex-shrink-0 ${isTextFile(entry.name) ? 'text-mc-muted' : 'text-orange-400'}`} />
+                          : <FileText size={14} className={`flex-shrink-0 ${isZip(entry.name) ? 'text-orange-400' : isTextFile(entry.name) ? 'text-mc-muted' : 'text-slate-500'}`} />
                         }
                         <span className="truncate">{entry.name}</span>
                       </div>
@@ -483,26 +604,25 @@ export default function FilesTab({ serverId }: { serverId: string }) {
                   <td className="px-4 py-2" onClick={(e) => e.stopPropagation()}>
                     <div className="flex items-center gap-0.5 justify-end opacity-0 group-hover:opacity-100 transition-opacity">
                       <button
-                        onClick={() => { setRenamingPath(entry.path); setRenameValue(entry.name); }}
-                        className="p-1 rounded hover:bg-mc-border text-mc-muted hover:text-gray-300"
+                        onClick={(e) => { e.stopPropagation(); setRenamingPath(entry.path); setRowRenameValue(entry.name); }}
+                        className="p-1.5 rounded hover:bg-mc-border text-mc-muted hover:text-gray-300"
                         title="Rename"
                       >
-                        <FilePen size={12} />
+                        <FilePen size={13} />
                       </button>
-                      {!entry.isDir && (
-                        <a
-                          href={`/api/servers/${serverId}/files/download?path=${encodeURIComponent(entry.path)}`}
-                          download
-                          className="p-1 rounded hover:bg-mc-border text-mc-muted hover:text-gray-300"
-                          title="Download"
-                        >
-                          <Download size={12} />
-                        </a>
-                      )}
+                      <a
+                        href={`/api/servers/${serverId}/files/download?path=${encodeURIComponent(entry.path)}`}
+                        download
+                        className="p-1.5 rounded hover:bg-mc-border text-mc-muted hover:text-gray-300"
+                        title={entry.isDir ? 'Download as .zip' : 'Download'}
+                        onClick={(e) => e.stopPropagation()}
+                      >
+                        <Download size={13} />
+                      </a>
                       {confirmDeletePath === entry.path ? (
                         <>
                           <button
-                            onClick={(e) => deleteEntry(entry, e)}
+                            onClick={(e) => rowDelete(entry, e)}
                             className="text-xs text-red-400 hover:text-red-300 px-1.5 py-0.5 rounded border border-red-700/50 hover:bg-red-900/30 transition-colors"
                           >
                             Delete?
@@ -516,11 +636,11 @@ export default function FilesTab({ serverId }: { serverId: string }) {
                         </>
                       ) : (
                         <button
-                          onClick={(e) => deleteEntry(entry, e)}
-                          className="p-1 rounded hover:bg-red-900/30 text-mc-muted hover:text-red-400"
+                          onClick={(e) => rowDelete(entry, e)}
+                          className="p-1.5 rounded hover:bg-red-900/30 text-mc-muted hover:text-red-400"
                           title="Delete"
                         >
-                          <Trash2 size={12} />
+                          <Trash2 size={13} />
                         </button>
                       )}
                     </div>

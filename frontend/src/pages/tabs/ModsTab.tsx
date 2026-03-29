@@ -118,8 +118,10 @@ function slugMatchesFilename(filename: string, slug: string): boolean {
   // Split on hyphens, underscores, and spaces to isolate the stem (e.g. "RCT" from "RCT Trainers+ [1.6] v2.1.zip")
   const stem = norm(filename.replace(/\.(jar|zip)$/i, '').split(/[-_ ]/)[0]);
   if (stem.length >= 6 && nSlug.includes(stem)) return true;
-  // Acronym: stem matches or is a prefix of slug word initials
-  // catches "bwncr" → "bad-wither-no-cookie-reloaded" and "rct" → "radical-cobblemon-trainer-textures-plus"
+  // Slug starts with the stem abbreviation (e.g. "rct" → "rcttrainertexturesplus")
+  if (stem.length >= 3 && nSlug.startsWith(stem)) return true;
+  // Acronym: stem is a prefix of slug word initials
+  // catches "bwncr" → "bad-wither-no-cookie-reloaded"
   const words = slug.split(/[-_\s]+/).filter(Boolean);
   if (words.length >= 3) {
     const acronym = words.map((w) => w[0]).join('').toLowerCase();
@@ -159,9 +161,11 @@ export default function ModsTab({ serverId }: { serverId: string }) {
   const [confirmRemovePath, setConfirmRemovePath] = useState<string | null>(null);
   const [missingMods, setMissingMods] = useState<MissingMod[]>([]);
   const [missingLoading, setMissingLoading] = useState(false);
+  const [autoInstalling, setAutoInstalling] = useState<Map<number, 'loading' | 'done' | 'notfound' | 'error'>>(new Map());
   const [uploadError, setUploadError] = useState('');
   const [uploading, setUploading] = useState(false);
   const [uploadToast, setUploadToast] = useState<string | null>(null);
+  const [dropActive, setDropActive] = useState(false);
 
   const server = useServersStore((s) => s.servers.find((sv) => sv.id === serverId));
   const modsDir = ['paper', 'spigot', 'purpur'].includes(server?.type ?? '') ? 'plugins' : 'mods';
@@ -199,22 +203,35 @@ export default function ModsTab({ serverId }: { serverId: string }) {
     loadInstalled();
   }
 
-  async function onUpload(e: React.ChangeEvent<HTMLInputElement>) {
-    const files = e.target.files;
-    if (!files || files.length === 0) return;
+  async function uploadFileList(files: FileList | File[]) {
+    const list = files instanceof FileList ? files : (() => { const dt = new DataTransfer(); files.forEach(f => dt.items.add(f)); return dt.files; })();
+    if (list.length === 0) return;
     setUploading(true);
     setUploadError('');
     try {
-      await uploadFiles(`/servers/${serverId}/files/upload`, files, { path: modsDir });
-      const count = files.length;
+      await uploadFiles(`/servers/${serverId}/files/upload`, list, { path: modsDir });
+      const count = list.length;
       setUploadToast(`Uploaded ${count} file${count !== 1 ? 's' : ''}`);
       setTimeout(() => setUploadToast(null), 3000);
       loadInstalled();
+      // Re-check missing mods so resolved ones disappear
+      loadMissingMods();
     } catch (err: unknown) {
       setUploadError(err instanceof Error ? err.message : 'Upload failed');
     }
     setUploading(false);
+  }
+
+  async function onUpload(e: React.ChangeEvent<HTMLInputElement>) {
+    if (e.target.files) await uploadFileList(e.target.files);
     e.target.value = '';
+  }
+
+  function onDrop(e: React.DragEvent) {
+    e.preventDefault();
+    setDropActive(false);
+    const files = Array.from(e.dataTransfer.files).filter(f => /\.(jar|zip)$/i.test(f.name));
+    if (files.length > 0) uploadFileList(files);
   }
 
   async function searchModrinth(query: string, page: number) {
@@ -297,6 +314,19 @@ export default function ModsTab({ serverId }: { serverId: string }) {
 
   const filteredMods = mods.filter(m => !localSearch || m.name.toLowerCase().includes(localSearch.toLowerCase()));
 
+  async function autoInstall(mod: MissingMod) {
+    setAutoInstalling((m) => new Map(m).set(mod.projectId, 'loading'));
+    try {
+      await api.post(`/servers/${serverId}/modrinth/resolve-missing`, { name: mod.name });
+      setAutoInstalling((m) => new Map(m).set(mod.projectId, 'done'));
+      // Refresh installed list so the new file appears
+      loadInstalled();
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : '';
+      setAutoInstalling((m) => new Map(m).set(mod.projectId, msg.includes('not found') || msg.includes('No compatible') ? 'notfound' : 'error'));
+    }
+  }
+
   async function searchInCF(name: string) {
     setView('curseforge');
     setCfQuery(name);
@@ -305,18 +335,6 @@ export default function ModsTab({ serverId }: { serverId: string }) {
       setCfIdsLoaded(true);
       api.get<Record<number, string>>(`/servers/${serverId}/curseforge/installed-ids`)
         .then((d) => setInstalledCfIds(new Set(Object.keys(d).map(Number))))
-        .catch(() => {});
-    }
-  }
-
-  async function searchInMR(name: string) {
-    setView('modrinth');
-    setMrQuery(name);
-    searchModrinth(name, 0);
-    if (!mrIdsLoaded) {
-      setMrIdsLoaded(true);
-      api.get<Record<string, string>>(`/servers/${serverId}/modrinth/installed-ids`)
-        .then((d) => setInstalledMrIds(new Set(Object.keys(d))))
         .catch(() => {});
     }
   }
@@ -423,12 +441,13 @@ export default function ModsTab({ serverId }: { serverId: string }) {
                     <span className="text-xs text-orange-400/70 ml-1">— distribution disabled by author</span>
                     <div className="ml-auto flex items-center gap-2">
                       <button
-                        onClick={() => needsDownload.forEach((mod) => window.open(mod.url, '_blank'))}
-                        className="text-xs px-2 py-1 rounded text-orange-300 hover:bg-orange-500/15 border border-orange-700/50 hover:border-orange-600/60 flex items-center gap-1 transition-colors"
-                        title="Open all CurseForge pages in new tabs"
+                        onClick={() => needsDownload.filter((m) => !autoInstalling.get(m.projectId)).forEach((mod) => autoInstall(mod))}
+                        disabled={needsDownload.every((m) => autoInstalling.get(m.projectId) === 'done' || autoInstalling.get(m.projectId) === 'loading')}
+                        className="text-xs px-2 py-1 rounded text-mc-green hover:bg-mc-green/10 border border-mc-green/30 hover:border-mc-green/50 flex items-center gap-1 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                        title="Auto-install all via Modrinth"
                       >
-                        <ExternalLink size={11} />
-                        Open All
+                        <Download size={11} />
+                        Install All
                       </button>
                       <button
                         onClick={loadMissingMods}
@@ -441,31 +460,94 @@ export default function ModsTab({ serverId }: { serverId: string }) {
                     </div>
                   </div>
                   <div className="divide-y divide-orange-700/20">
-                    {needsDownload.map((mod) => (
-                      <div key={mod.projectId} className="flex items-center gap-3 px-3 py-2">
-                        <Package size={13} className="text-orange-400/60 flex-shrink-0" />
-                        <span className="text-sm text-gray-300 flex-1 min-w-0 truncate">{mod.name}</span>
-                        <div className="flex items-center gap-1.5 flex-shrink-0">
-                          <a
-                            href={mod.url}
-                            target="_blank"
-                            rel="noreferrer"
-                            className="text-xs px-2 py-1 rounded text-mc-muted hover:text-gray-200 border border-mc-border hover:border-mc-border/80 flex items-center gap-1 transition-colors"
-                          >
-                            <ExternalLink size={11} />
-                            CurseForge
-                          </a>
-                          <button
-                            onClick={() => searchInMR(mod.name)}
-                            className="text-xs px-2 py-1 rounded text-mc-green hover:bg-mc-green/10 border border-mc-green/30 hover:border-mc-green/50 flex items-center gap-1 transition-colors"
-                          >
-                            <Search size={11} />
-                            Search
-                          </button>
+                    {needsDownload.map((mod) => {
+                      const status = autoInstalling.get(mod.projectId);
+                      return (
+                        <div key={mod.projectId} className="flex items-center gap-3 px-3 py-2">
+                          <Package size={13} className={`flex-shrink-0 ${status === 'done' ? 'text-mc-green/60' : 'text-orange-400/60'}`} />
+                          <span className="text-sm text-gray-300 flex-1 min-w-0 truncate">{mod.name}</span>
+                          <div className="flex items-center gap-1.5 flex-shrink-0">
+                            {status === 'done' ? (
+                              <span className="text-xs text-mc-green font-mono">Installed</span>
+                            ) : status === 'notfound' ? (
+                              <>
+                                <span className="text-xs text-mc-muted font-mono">Not on Modrinth —</span>
+                                <a
+                                  href={`https://www.curseforge.com/minecraft/mc-mods/${mod.slug}/files/${mod.fileId}`}
+                                  target="_blank"
+                                  rel="noreferrer"
+                                  className="text-xs px-2 py-1 rounded text-orange-300 hover:bg-orange-500/15 border border-orange-700/50 hover:border-orange-600/60 flex items-center gap-1 transition-colors"
+                                >
+                                  <ExternalLink size={11} />
+                                  Download
+                                </a>
+                              </>
+                            ) : status === 'error' ? (
+                              <>
+                                <span className="text-xs text-red-400 font-mono">Failed</span>
+                                <button
+                                  onClick={() => autoInstall(mod)}
+                                  className="text-xs px-2 py-1 rounded text-mc-muted hover:text-gray-200 border border-mc-border flex items-center gap-1 transition-colors"
+                                >
+                                  Retry
+                                </button>
+                              </>
+                            ) : status === 'loading' ? (
+                              <span className="flex items-center gap-1 text-xs text-mc-muted">
+                                <Loader2 size={11} className="animate-spin" />
+                                Installing…
+                              </span>
+                            ) : (
+                              <button
+                                onClick={() => autoInstall(mod)}
+                                className="text-xs px-2 py-1 rounded text-mc-green hover:bg-mc-green/10 border border-mc-green/30 hover:border-mc-green/50 flex items-center gap-1 transition-colors"
+                              >
+                                <Download size={11} />
+                                Install
+                              </button>
+                            )}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+
+                  {/* Drop zone for manually downloaded files */}
+                  {(() => {
+                    const notFound = needsDownload.filter((m) => autoInstalling.get(m.projectId) === 'notfound');
+                    if (notFound.length === 0) return null;
+                    return (
+                      <div
+                        className={`border-t border-orange-700/30 px-3 py-3 transition-colors ${dropActive ? 'bg-orange-500/10' : ''}`}
+                        onDragOver={(e) => { e.preventDefault(); setDropActive(true); }}
+                        onDragEnter={(e) => { e.preventDefault(); setDropActive(true); }}
+                        onDragLeave={() => setDropActive(false)}
+                        onDrop={onDrop}
+                      >
+                        <div className={`border-2 border-dashed rounded-lg px-4 py-3 flex flex-col items-center gap-2 transition-colors ${dropActive ? 'border-orange-400/60 bg-orange-500/10' : 'border-orange-700/40'}`}>
+                          <div className="flex items-center gap-2 text-xs text-orange-300/80">
+                            <Upload size={13} />
+                            <span>Drop downloaded .jar / .zip files here</span>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <button
+                              onClick={() => notFound.forEach((mod) => window.open(`https://www.curseforge.com/minecraft/mc-mods/${mod.slug}/files/${mod.fileId}`, '_blank'))}
+                              className="text-xs px-2 py-1 rounded text-orange-300 hover:bg-orange-500/15 border border-orange-700/50 hover:border-orange-600/60 flex items-center gap-1 transition-colors"
+                            >
+                              <ExternalLink size={11} />
+                              Open All Download Pages
+                            </button>
+                            <span className="text-xs text-mc-muted">or</span>
+                            <label className="text-xs px-2 py-1 rounded text-mc-muted hover:text-gray-200 border border-mc-border hover:border-mc-border/80 flex items-center gap-1 transition-colors cursor-pointer">
+                              <Upload size={11} />
+                              Browse Files
+                              <input type="file" multiple accept=".jar,.zip" className="hidden" onChange={onUpload} />
+                            </label>
+                          </div>
                         </div>
                       </div>
-                    ))}
-                  </div>
+                    );
+                  })()}
                 </div>
               );
             })()}

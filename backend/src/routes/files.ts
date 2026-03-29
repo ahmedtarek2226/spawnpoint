@@ -98,7 +98,7 @@ router.post('/upload', upload.array('files'), async (req: Request, res: Response
       const f = files[i];
       const relPath = relativePaths[i] || f.originalname;
 
-      if (f.originalname.toLowerCase().endsWith('.zip') && !relativePaths[i]) {
+      if (f.originalname.toLowerCase().endsWith('.zip') && !relativePaths[i] && req.body.raw !== 'true') {
         await extractJarsFromZip(f.path, absDestDir);
         fs.unlinkSync(f.path);
       } else {
@@ -120,13 +120,33 @@ router.post('/upload', upload.array('files'), async (req: Request, res: Response
   } catch (err) { next(err); }
 });
 
-// Download file
-router.get('/download', (req: Request, res: Response, next: NextFunction) => {
+// Download file or folder (folder → streamed .zip)
+router.get('/download', async (req: Request, res: Response, next: NextFunction) => {
   try {
     const filePath = req.query.path as string;
     if (!filePath) return next(new ApiError('path required', 400));
     const target = safePath(serverDir(req.params.id), filePath);
-    res.download(target);
+
+    if (!fs.existsSync(target)) return next(new ApiError('Not found', 404));
+
+    const stat = fs.statSync(target);
+    if (!stat.isDirectory()) {
+      res.download(target);
+      return;
+    }
+
+    // Stream a zip of the directory
+    const folderName = path.basename(target);
+    res.setHeader('Content-Type', 'application/zip');
+    res.setHeader('Content-Disposition', `attachment; filename="${folderName}.zip"`);
+
+    // Walk directory and pipe each file into a zip stream
+    const archiver = await import('archiver');
+    const archive = archiver.default('zip', { zlib: { level: 6 } });
+    archive.on('error', (err) => { if (!res.headersSent) next(err); });
+    archive.pipe(res);
+    archive.directory(target, folderName);
+    await archive.finalize();
   } catch (err) { next(err); }
 });
 
@@ -156,6 +176,53 @@ router.post('/mkdir', (req: Request, res: Response, next: NextFunction) => {
     const { path: dirPath } = req.body as { path: string };
     if (!dirPath) return next(new ApiError('path required', 400));
     makeDir(serverDir(req.params.id), dirPath);
+    res.json({ success: true });
+  } catch (err) { next(err); }
+});
+
+// Unzip a .zip file in-place (extract contents into the same directory)
+router.post('/unzip', async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const { path: filePath } = req.body as { path: string };
+    if (!filePath) return next(new ApiError('path required', 400));
+
+    const dir = serverDir(req.params.id);
+    const absZip = safePath(dir, filePath);
+
+    if (!fs.existsSync(absZip)) return next(new ApiError('File not found', 404));
+    if (!absZip.toLowerCase().endsWith('.zip')) return next(new ApiError('Only .zip files can be extracted', 400));
+
+    const destDir = path.dirname(absZip);
+
+    await new Promise<void>((resolve, reject) => {
+      yauzl.open(absZip, { lazyEntries: true, autoClose: true }, (err, zip) => {
+        if (err || !zip) return reject(err ?? new Error('Failed to open zip'));
+        zip.readEntry();
+        zip.on('entry', (entry: yauzl.Entry) => {
+          const name: string = entry.fileName;
+          // Prevent path traversal
+          const dest = safePath(destDir, name);
+          if (/\/$/.test(name)) {
+            // Directory entry
+            fs.mkdirSync(dest, { recursive: true });
+            zip.readEntry();
+          } else {
+            fs.mkdirSync(path.dirname(dest), { recursive: true });
+            zip.openReadStream(entry, (e, stream) => {
+              if (e || !stream) { zip.readEntry(); return; }
+              const out = fs.createWriteStream(dest);
+              stream.pipe(out);
+              out.on('finish', () => zip.readEntry());
+              out.on('error', () => zip.readEntry());
+              stream.on('error', () => zip.readEntry());
+            });
+          }
+        });
+        zip.on('end', () => resolve());
+        zip.on('error', reject);
+      });
+    });
+
     res.json({ success: true });
   } catch (err) { next(err); }
 });
