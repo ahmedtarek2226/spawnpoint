@@ -69,16 +69,28 @@ function fmtRelative(isoStr: string): string {
 }
 
 function parseVersion(name: string): string {
-  let base = name.replace(/\.jar$/i, '');
+  let base = name.replace(/\.(jar|zip|mrpack)$/i, '');
   base = base.replace(/^\[[\d.x]+\]\s*/, '');
   base = base.replace(/\s*\(\d+\)\s*$/, '');
-  const vMatch = base.match(/[ _-]v(\d+\.\d+[\w.+\-]*)/i);
-  if (vMatch) return vMatch[1];
-  const isMc = (s: string) => /^1\.(1[6-9]|2[0-4])(\.\d+)?$/.test(s);
-  const tokens = base.split(/[-_]/);
+  // Match explicit v- or r-prefixed dotted version (e.g. v2.1, r5.7.1 for shader packs)
+  const vMatch = base.match(/[ _-][vr](\d+\.\d+[\w.+\-]*)/i);
+  if (vMatch) return vMatch[1].replace(/[_-](neoforge|forge|fabric|quilt|release|hotfix)$/i, '');
+  // Match v-prefixed single-number version (e.g. cosmeticarmorreworked-1.21.1-v1)
+  const vSimple = base.match(/[ _-]v(\d+)(?=[_\- ]|$)/i);
+  if (vSimple) return vSimple[1];
+  // x-suffixed MC versions like 1.21.x also count as MC
+  const isMc = (s: string) => /^1\.(1[6-9]|2[0-4])(\.\d+)?([.-]x)?$/i.test(s);
+  const tokens = base.split(/[-_ ]/);
   const dotted = tokens.filter(t => /^\d+\.\d+/.test(t));
   const modVer = dotted.find(t => !isMc(t));
-  return modVer ?? dotted[0] ?? '';
+  if (modVer) return modVer;
+  // No non-MC dotted version — look for a number or dotted number right after the MC version token
+  const mcIdx = tokens.findIndex(t => isMc(t));
+  if (mcIdx !== -1 && mcIdx + 1 < tokens.length) {
+    const candidate = tokens[mcIdx + 1];
+    if (/^\d[\d.]*$/.test(candidate)) return candidate;
+  }
+  return '';
 }
 
 function fmtDownloads(n: number) {
@@ -103,8 +115,17 @@ function slugMatchesFilename(filename: string, slug: string): boolean {
   if (nFile.includes(nSlug)) return true;
   // Reverse: filename stem (first hyphen-separated token, before version numbers)
   // contained in slug — catches "moreoverlays" inside "moreoverlaysupdated"
-  const stem = norm(filename.replace(/\.jar$/i, '').split(/[-_]/)[0]);
-  return stem.length >= 6 && nSlug.includes(stem);
+  // Split on hyphens, underscores, and spaces to isolate the stem (e.g. "RCT" from "RCT Trainers+ [1.6] v2.1.zip")
+  const stem = norm(filename.replace(/\.(jar|zip)$/i, '').split(/[-_ ]/)[0]);
+  if (stem.length >= 6 && nSlug.includes(stem)) return true;
+  // Acronym: stem matches or is a prefix of slug word initials
+  // catches "bwncr" → "bad-wither-no-cookie-reloaded" and "rct" → "radical-cobblemon-trainer-textures-plus"
+  const words = slug.split(/[-_\s]+/).filter(Boolean);
+  if (words.length >= 3) {
+    const acronym = words.map((w) => w[0]).join('').toLowerCase();
+    if (stem.length >= 3 && acronym.startsWith(stem)) return true;
+  }
+  return false;
 }
 
 export default function ModsTab({ serverId }: { serverId: string }) {
@@ -288,6 +309,18 @@ export default function ModsTab({ serverId }: { serverId: string }) {
     }
   }
 
+  async function searchInMR(name: string) {
+    setView('modrinth');
+    setMrQuery(name);
+    searchModrinth(name, 0);
+    if (!mrIdsLoaded) {
+      setMrIdsLoaded(true);
+      api.get<Record<string, string>>(`/servers/${serverId}/modrinth/installed-ids`)
+        .then((d) => setInstalledMrIds(new Set(Object.keys(d))))
+        .catch(() => {});
+    }
+  }
+
   return (
     <div className="flex flex-col h-full overflow-hidden">
       {/* Tab bar */}
@@ -422,15 +455,13 @@ export default function ModsTab({ serverId }: { serverId: string }) {
                             <ExternalLink size={11} />
                             CurseForge
                           </a>
-                          {cfEnabled && (
-                            <button
-                              onClick={() => searchInCF(mod.name)}
-                              className="text-xs px-2 py-1 rounded text-mc-green hover:bg-mc-green/10 border border-mc-green/30 hover:border-mc-green/50 flex items-center gap-1 transition-colors"
-                            >
-                              <Search size={11} />
-                              Search
-                            </button>
-                          )}
+                          <button
+                            onClick={() => searchInMR(mod.name)}
+                            className="text-xs px-2 py-1 rounded text-mc-green hover:bg-mc-green/10 border border-mc-green/30 hover:border-mc-green/50 flex items-center gap-1 transition-colors"
+                          >
+                            <Search size={11} />
+                            Search
+                          </button>
                         </div>
                       </div>
                     ))}
